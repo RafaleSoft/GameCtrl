@@ -7,6 +7,7 @@
 struct GameCtrlData_st
 {
 	int			CHRONO;					// Durée en minutes de jeu
+	long		NbDaysToReinit;			
 	FILETIME	NextUpdateTime;			// Prochaine réinitialisation des compteurs
 	long		NbGames;
 	char**		Games;
@@ -25,3 +26,4 @@ BOOL	SetRegistryVars(HWND hWnd, GameCtrlData_st &data);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Config(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Games(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK	Password(HWND, UINT, WPARAM, LPARAM);

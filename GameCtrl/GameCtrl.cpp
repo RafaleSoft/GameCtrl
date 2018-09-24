@@ -16,10 +16,11 @@ HWND hWnd = 0;
 PROCESS_INFORMATION	pi;
 
 int CHRONO_DEFAULT = 140;
+int DAYS_DEFAULT = 7;
 UINT nIDEvent = 0;
 HFONT font = 0;
 
-GameCtrlData_st data = { CHRONO_DEFAULT, { 0, 0 }, 0, { NULL } };
+GameCtrlData_st data = { CHRONO_DEFAULT, DAYS_DEFAULT, { 0, 0 }, 0, { NULL } };
 
 
 // Forward declarations of functions included in this code module:
@@ -192,10 +193,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 					break;
 				case ID_CONFIG_TIMELIMITER:
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config);
+					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
+						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
+					else
+						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
 					break;
 				case ID_CONFIG_GAMES:
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Games);
+					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
+						DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Games);
+					else
+						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
 					break;
 				case IDM_EXIT:
 					// TODO : check game has been quit.
