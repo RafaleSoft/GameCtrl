@@ -17,5 +17,9 @@
 #include <memory.h>
 #include <tchar.h>
 
+// common dialogs
+#include <commdlg.h>
+// comon controls
+#include <CommCtrl.h>
 
 // TODO: reference additional headers your program requires here

@@ -7,8 +7,8 @@
 
 
 //	Process startup info
-STARTUPINFO			si;
-
+static STARTUPINFO si;
+static PROCESS_INFORMATION	pi;
 
 
 void CheckError(HWND hWnd, const char* msg, DWORD err)
@@ -33,9 +33,9 @@ void CheckError(HWND hWnd, const char* msg, DWORD err)
 
 
 
-BOOL runGame(HWND hWnd, const char *path, PROCESS_INFORMATION &pi)
+BOOL runGame(HWND hWnd, const char *path)
 {
-	if (NULL == path)
+	if ((NULL == path) || (NULL == hWnd))
 		return FALSE;
 
 	char				gamePath[MAX_PATH];
@@ -75,3 +75,69 @@ BOOL runGame(HWND hWnd, const char *path, PROCESS_INFORMATION &pi)
 	return TRUE;
 }
 
+BOOL stopGame(HWND hWnd)
+{
+	if (NULL == hWnd)
+		return FALSE;
+
+	// process already terminated or not started.
+	if (0 == pi.hProcess)
+		return TRUE;
+
+	BOOL res = TerminateProcess(pi.hProcess, TRUE);
+	if (FALSE == res)
+		CheckError(hWnd, "Failed to terminate game", ::GetLastError());
+	else
+	{
+		// Wait until game process exits.
+		WaitForSingleObject(pi.hProcess, INFINITE);
+
+		CloseHandle(pi.hProcess);
+		if (0 != pi.hThread)
+			CloseHandle(pi.hThread);
+
+		memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+	}
+
+	return res;
+}
+
+
+void adjustGameTime(GameCtrlData_st &data)
+{
+	SYSTEMTIME SystemTime;
+	GetSystemTime(&SystemTime);
+	FILETIME currentTime;
+	SystemTimeToFileTime(&SystemTime, &currentTime);
+
+	if ((data.NextUpdateTime.dwHighDateTime == 0) &&
+		(data.NextUpdateTime.dwLowDateTime == 0))
+	{
+		SystemTime.wDay = 1;
+		SystemTime.wMonth = 1;
+		SystemTime.wYear = 2018;
+		SystemTime.wHour = 0;
+		SystemTime.wMinute = 0;
+		SystemTime.wSecond = 0;
+		SystemTime.wMilliseconds = 0;
+		SystemTime.wDayOfWeek = 1;
+		SystemTimeToFileTime(&SystemTime, &data.NextUpdateTime);
+	}
+
+	LONG cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
+	if (1 == cmp)		// Reset delay is necessary
+	{
+		data.CHRONO = data.ReinitChrono;
+		ULARGE_INTEGER next;
+		next.HighPart = data.NextUpdateTime.dwHighDateTime;
+		next.LowPart = data.NextUpdateTime.dwLowDateTime;
+
+		ULARGE_INTEGER delta;
+		delta.QuadPart = data.NbDaysToReinit * 24 * 60 * 60;
+		delta.QuadPart *= 1000 * 1000 * 10;	// in 100ns intervals.
+
+		next.QuadPart = next.QuadPart + delta.QuadPart;
+		data.NextUpdateTime.dwHighDateTime = next.HighPart;
+		data.NextUpdateTime.dwLowDateTime = next.LowPart;
+	}
+}

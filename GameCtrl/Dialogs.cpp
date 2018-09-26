@@ -7,7 +7,7 @@
 
 
 static GameCtrlData_st *pSaveData = NULL;
-
+static int selectedGame = -1;
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -80,17 +80,16 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 				HANDLE token;
 				BOOL logon = LogonUser(user, ".", pass, LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT, &token);
-				if (TRUE == logon)
+				if ((TRUE == logon) && IsUserAdmin(token))
 				{
-					BOOL b = IsUserAdmin(token);
 					EndDialog(hDlg, LOWORD(wParam));
 					res = (INT_PTR)TRUE;
 				}
 				else
-					EndDialog(hDlg, LOWORD(IDCANCEL));
+					EndDialog(hDlg, IDCANCEL);
 			}
 			else if (LOWORD(wParam) == IDCANCEL)
-				EndDialog(hDlg, LOWORD(wParam));
+				EndDialog(hDlg, IDCANCEL);
 			break;
 		}
 	}
@@ -139,7 +138,7 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				CheckRadioButton(hDlg, IDC_RADIO_DAY, IDC_RADIO_MONTH, radio);
 
 				char buffer[32] = "";
-				sprintf_s(&buffer[0], 32, "%d", max(0, pSaveData->CHRONO));
+				sprintf_s(&buffer[0], 32, "%d", pSaveData->ReinitChrono);
 				SetDlgItemText(hDlg, IDC_EDIT_MINUTES, buffer);
 				res = (INT_PTR)TRUE;
 			}
@@ -159,7 +158,7 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 				char buffer[32] = "";
 				GetWindowText(GetDlgItem(hDlg,IDC_EDIT_MINUTES), buffer, 32);
-				pSaveData->CHRONO = atoi(buffer);
+				pSaveData->ReinitChrono = atoi(buffer);
 
 				EndDialog(hDlg, LOWORD(wParam));
 				res = (INT_PTR)TRUE;
@@ -181,18 +180,89 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 // Message handler for games dialog.
 INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	UNREFERENCED_PARAMETER(lParam);
+	INT_PTR res = (INT_PTR)FALSE;
+
 	switch (message)
 	{
 		case WM_INITDIALOG:
-			return (INT_PTR)TRUE;
+		{
+			pSaveData = (GameCtrlData_st*)lParam;
+			HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+			for (long i = 0; i < pSaveData->NbGames; i++)
+			{
+				LVITEM item;
+				item.iItem = i;
+				item.iSubItem = 0;
+				item.mask = LVIF_TEXT;
+				const char *exe = strrchr(pSaveData->Games[i],'\\');
+				item.pszText = (LPSTR)(exe+1);
+				ListView_InsertItem(lv, &item);
+			}
 
+			return (INT_PTR)TRUE;
+			break;
+		}
+		case WM_NOTIFY:
+		{
+			switch (LOWORD(wParam)) // hit control
+			{
+				case IDC_LIST_GAMES:
+				{
+					if (((LPNMHDR)lParam)->code == NM_CLICK)
+					{
+						HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+						selectedGame = ListView_GetNextItem(lv, -1, LVNI_SELECTED);
+						HWND run = GetDlgItem(hDlg, IDOK);
+						EnableWindow(run, (selectedGame != -1));
+						//MessageBox(NULL, pSaveData->Games[iSelect], "Item selected", MB_OK);
+					}
+					break;
+				}
+			}
+			break;
+		}
 		case WM_COMMAND:
-			if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			//	User clicks back, return normaly.
+			if (LOWORD(wParam) == IDCANCEL)
 			{
 				EndDialog(hDlg, LOWORD(wParam));
 				return (INT_PTR)TRUE;
 			}
+			//	User clicks run, run game and close window.
+			else if (LOWORD(wParam) == IDOK)
+			{
+				runGame(hDlg, pSaveData->Games[selectedGame]);
+				EndDialog(hDlg, LOWORD(wParam));
+				return (INT_PTR)TRUE;
+			}
+			else if (LOWORD(wParam) == IDADD)
+			{
+				if ((INT_PTR)TRUE == DialogBox(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password))
+				{
+					char buffer[256] = "\0\0";
+					OPENFILENAME open;
+
+					memset(&open, 0, sizeof(OPENFILENAME));
+					open.lStructSize = sizeof(OPENFILENAME);
+					open.hwndOwner = hDlg;
+					open.lpstrFilter = "Game executable\0*.exe\0\0";
+					open.nFilterIndex = 1;
+					open.lpstrFile = buffer;
+					open.nMaxFile = 256;
+
+					if (GetOpenFileName(&open))
+					{
+
+					}
+				}
+				else
+					MessageBox(hDlg, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
+				break;
+			}
+			break;
+		}
+		default:
 			break;
 	}
 	return (INT_PTR)FALSE;

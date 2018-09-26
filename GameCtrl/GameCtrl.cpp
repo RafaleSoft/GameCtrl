@@ -13,14 +13,18 @@ TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 HWND hWnd = 0;
 
-PROCESS_INFORMATION	pi;
 
 int CHRONO_DEFAULT = 140;
 int DAYS_DEFAULT = 7;
 UINT nIDEvent = 0;
 HFONT font = 0;
 
-GameCtrlData_st data = { CHRONO_DEFAULT, DAYS_DEFAULT, { 0, 0 }, 0, { NULL } };
+GameCtrlData_st data = {	CHRONO_DEFAULT,
+							CHRONO_DEFAULT,
+							DAYS_DEFAULT,
+							{ 0, 0 },
+							1,
+							NULL };
 
 
 // Forward declarations of functions included in this code module:
@@ -72,13 +76,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	SetRegistryVars(hWnd,data);
 
-	// Wait until game process exits.
-	WaitForSingleObject(pi.hProcess, INFINITE);
-
-	// Close process and thread handles. 
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
-
+	// Wait until game process exits if any.
+	stopGame(hWnd);
 
 	return (int) msg.wParam;
 }
@@ -140,13 +139,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	else
 		adjustGameTime(data);
 
-	/*
 	if (0 == data.CHRONO)
 	{
 		::MessageBox(hWnd, "Temps de jeu dépassé !", "Erreur", MB_OK);
 		return FALSE;
 	}
-	*/
+	
 	font = ::CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
 	::ShowCursor(TRUE);
 
@@ -158,8 +156,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		CheckError(hWnd, "Error creating timer", ::GetLastError());
 		return FALSE;
 	}
-
-	//runGame(hWnd, "F:\\BlueStacks\\Bluestacks\\Client\\BlueStacks.exe",pi);
 
 	return TRUE;
 }
@@ -199,10 +195,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
 					break;
 				case ID_CONFIG_GAMES:
-					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
-						DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Games);
-					else
-						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
+					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
 					break;
 				case IDM_EXIT:
 					// TODO : check game has been quit.
@@ -216,14 +209,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_TIMER:
 		{
 			data.CHRONO = data.CHRONO - 1;
-			if ((0 == data.CHRONO) && (0 != pi.hProcess))
-			{
-				BOOL res = TerminateProcess(pi.hProcess, 1);
-				if (FALSE == res)
-					CheckError(hWnd, "Failed to terminate game", ::GetLastError());
-				else
-					pi.hProcess = 0;
-			}
+			//	Terminate current game if any when timer reaches 0
+			if (0 == data.CHRONO)
+				stopGame(hWnd);
 			::InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
@@ -243,12 +231,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_DESTROY:
 		{
-			if (0 != pi.hProcess)
-			{
-				BOOL res = TerminateProcess(pi.hProcess, 1);
-				if (FALSE == res)
-					CheckError(hWnd, "Failed to terminate game", ::GetLastError());
-			}
+			//	Terminate current game if any,
+			stopGame(hWnd);
 			//	Quit application.
 			PostQuitMessage(0);
 			break;
@@ -259,44 +243,5 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-
-void adjustGameTime(GameCtrlData_st &data)
-{
-	SYSTEMTIME SystemTime;
-	GetSystemTime(&SystemTime);
-	FILETIME currentTime;
-	SystemTimeToFileTime(&SystemTime, &currentTime);
-
-	if ((data.NextUpdateTime.dwHighDateTime == 0) &&
-		(data.NextUpdateTime.dwLowDateTime == 0))
-	{
-		SystemTime.wDay = 1;
-		SystemTime.wMonth = 1;
-		SystemTime.wYear = 2018;
-		SystemTime.wHour = 0;
-		SystemTime.wMinute = 0;
-		SystemTime.wSecond = 0;
-		SystemTime.wMilliseconds = 0;
-		SystemTime.wDayOfWeek = 1;
-		SystemTimeToFileTime(&SystemTime, &data.NextUpdateTime);
-	}
-
-	LONG cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
-	if (1 == cmp)
-	{
-		data.CHRONO = CHRONO_DEFAULT;
-		ULARGE_INTEGER next;
-		next.HighPart = data.NextUpdateTime.dwHighDateTime;
-		next.LowPart = data.NextUpdateTime.dwLowDateTime;
-
-		ULARGE_INTEGER delta;	// 7days * 24hours * 60minutes * 60seconds = 604800
-		delta.QuadPart = 604800;
-		delta.QuadPart *= 1000 * 1000 * 10;	// in 100ns intervals.
-
-		next.QuadPart = next.QuadPart + delta.QuadPart;
-		data.NextUpdateTime.dwHighDateTime = next.HighPart;
-		data.NextUpdateTime.dwLowDateTime = next.LowPart;
-	}
-}
 
 

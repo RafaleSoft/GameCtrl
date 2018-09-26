@@ -6,17 +6,20 @@
 // Global data and registry structure
 struct GameCtrlData_st
 {
-	int			CHRONO;					// Durée en minutes de jeu
-	long		NbDaysToReinit;			
-	FILETIME	NextUpdateTime;			// Prochaine réinitialisation des compteurs
-	long		NbGames;
-	char**		Games;
+	int				CHRONO;					// Durée en minutes de jeu
+	long			ReinitChrono;
+	long			NbDaysToReinit;			
+	FILETIME		NextUpdateTime;			// Prochaine réinitialisation des compteurs
+	long			NbGames;
+	const char**	Games;
 };
 
 
 //	Utils interface
 void	CheckError(HWND hWnd, const char* msg, DWORD err);
-BOOL	runGame(const char *path, PROCESS_INFORMATION &pi);
+BOOL	runGame(HWND hWnd, const char *path);
+BOOL	stopGame(HWND hWnd);
+void	adjustGameTime(GameCtrlData_st &data);
 
 //	Registry helpers
 BOOL	GetRegistryVars(HWND hWnd, GameCtrlData_st &data);
