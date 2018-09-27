@@ -187,13 +187,24 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_INITDIALOG:
 		{
 			pSaveData = (GameCtrlData_st*)lParam;
+
+			HIMAGELIST imageList = ImageList_Create(32, 32, ILC_COLOR32, 16, 8);
+			for (long i = 0; i < pSaveData->NbGames; i++)
+			{
+				HICON hh = ExtractIcon(0, pSaveData->Games[i], 0);
+				ImageList_AddIcon(imageList, hh);
+			}
+
 			HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+			ListView_SetImageList(lv, imageList, LVSIL_SMALL);
+			
 			for (long i = 0; i < pSaveData->NbGames; i++)
 			{
 				LVITEM item;
+				memset(&item, 0, sizeof(LVITEM));
 				item.iItem = i;
-				item.iSubItem = 0;
-				item.mask = LVIF_TEXT;
+				item.mask = LVIF_TEXT | LVIF_IMAGE;
+				item.iImage = i;
 				const char *exe = strrchr(pSaveData->Games[i],'\\');
 				item.pszText = (LPSTR)(exe+1);
 				ListView_InsertItem(lv, &item);
