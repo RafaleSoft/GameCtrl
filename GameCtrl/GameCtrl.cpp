@@ -119,6 +119,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //        In this function, we save the instance handle in a global variable and
 //        create and display the main program window.
 //
+#include <processthreadsapi.h>
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
@@ -132,11 +133,78 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 
-   
 	if (!GetRegistryVars(hWnd,data))
 		return FALSE;
 	else
 		adjustGameTime(data);
+
+	if (FALSE == FindUser("GameCtrl"))
+	{
+		MessageBox(hWnd, "Utilisateur GameCtrl non installé, création du login", "Installation GameCtrl", MB_OK);
+
+		if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
+		{
+			BOOL logon = ImpersonateLoggedOnUser(GetAuthenticatedUser());
+			if (TRUE == logon)
+			{
+				CreateUser("GameCtrl");
+				RevertToSelf();
+			}
+		}
+		else
+			MessageBox(hWnd, "Authentification incorrecte !", "Installation GameCtrl", MB_OK);
+	}
+	else
+	{
+		/*
+		if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
+		{
+			HANDLE newToken = 0;
+			BOOL res = DuplicateTokenEx(GetAuthenticatedUser(), MAXIMUM_ALLOWED, NULL, SecurityAnonymous, TokenPrimary, &newToken);
+			if (TRUE == res)
+			{
+				char buffer[256];
+				DWORD bsize = 256;
+				GetUserName(buffer, &bsize);
+				if (!strcmp(buffer,"Fabrice"))
+					DeleteUser("GameCtrl");
+				else
+				{
+					STARTUPINFOW        si;
+					PROCESS_INFORMATION pi;
+
+					memset(&si, 0, sizeof(STARTUPINFO));
+					memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+					si.cb = sizeof(STARTUPINFO);
+					si.lpTitle = L"Play Game";
+					si.lpDesktop = L"winsta0\default";
+					
+					res = CreateProcessWithLogonW(	L"Fabrice",
+													L".",
+													L"RaFaLe99",
+													LOGON_WITH_PROFILE,
+													L"F:\\VisualStudioProjects\\GameCtrl\\Debug\\GameCtrl.exe",
+													NULL,
+													CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE | NORMAL_PRIORITY_CLASS,
+													NULL,
+													NULL,
+													&si,
+													&pi);
+					if (FALSE == res)
+						CheckError(hWnd, "Unable to run GameCtrl with priviledged rights", ::GetLastError());
+
+					return FALSE;
+				}
+			}
+			else
+				CheckError(hWnd, "Unable to run GameCtrl with priviledged rights", ::GetLastError());
+		}
+		*/
+		MessageBox(hWnd, "Utilisation du compte GameCtrl", "Installation GameCtrl", MB_OK);
+	}
+	
+	//return FALSE;
+	//SetSecurity(data.Games[0]);
 
 	if (0 == data.CHRONO)
 	{
