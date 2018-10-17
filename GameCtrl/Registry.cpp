@@ -7,7 +7,7 @@
 
 
 
-BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
+BOOL GetRegistryVars(GameCtrlData_st &data)
 {
 	HKEY hTestKey = 0;
 	LONG res = 0;
@@ -23,7 +23,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("CHRONO"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to read Chrono value", res);
+			CheckError("Unable to read Chrono value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -33,7 +33,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("REINITCHRONO"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to read Chrono reinit value", res);
+			CheckError("Unable to read Chrono reinit value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -43,7 +43,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("NBDAYSTOREINIT"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if ((ERROR_SUCCESS != res) || (0 == pvData))
 		{
-			CheckError(hWnd, "Unable to read Nb days to reinit value", res);
+			CheckError("Unable to read Nb days to reinit value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -53,7 +53,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("LOWDATETIME"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to read LowFileTime value", res);
+			CheckError("Unable to read LowFileTime value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -63,7 +63,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("HIGHDATETIME"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to read HighFileTime value", res);
+			CheckError("Unable to read HighFileTime value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -73,7 +73,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegGetValue(hTestKey, NULL, TEXT("NBGAMES"), RRF_RT_REG_DWORD, &pdwType, &pvData, &pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to read Nb games value", res);
+			CheckError("Unable to read Nb games value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -101,7 +101,7 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 			}
 			else
 			{
-				CheckError(hWnd, "Unable to read game name", res);
+				CheckError("Unable to read game name", res);
 				RegCloseKey(hTestKey);
 				return FALSE;
 			}
@@ -112,12 +112,12 @@ BOOL GetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 	}
 	else
 	{
-		CheckError(hWnd, "Unable to get GameCtrl data", res);
+		CheckError("Unable to get GameCtrl data", res);
 		return FALSE;
 	}
 }
 
-BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
+BOOL SetRegistryVars(GameCtrlData_st &data)
 {
 	HKEY hTestKey = 0;
 	LONG res = 0;
@@ -131,7 +131,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("CHRONO"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write Chrono value", res);
+			CheckError("Unable to write Chrono value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -140,7 +140,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("REINITCHRONO"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write Chrono reinit value", res);
+			CheckError("Unable to write Chrono reinit value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -149,7 +149,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("NBDAYSTOREINIT"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write Nb days to reinit value", res);
+			CheckError("Unable to write Nb days to reinit value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -158,7 +158,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("LOWDATETIME"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write NbJours value", res);
+			CheckError("Unable to write NbJours value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -167,7 +167,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("HIGHDATETIME"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write NbJours value", res);
+			CheckError("Unable to write NbJours value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -176,7 +176,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 		res = RegSetValueEx(hTestKey, TEXT("NBGAMES"), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 		if (ERROR_SUCCESS != res)
 		{
-			CheckError(hWnd, "Unable to write Nb games value", res);
+			CheckError("Unable to write Nb games value", res);
 			RegCloseKey(hTestKey);
 			return FALSE;
 		}
@@ -189,7 +189,7 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 			res = RegSetValueEx(hTestKey, TEXT(buffer), 0, REG_SZ, (BYTE*)game, strlen(game)+1);
 			if (ERROR_SUCCESS != res)
 			{
-				CheckError(hWnd, "Unable to write game name", res);
+				CheckError("Unable to write game name", res);
 				RegCloseKey(hTestKey);
 				return FALSE;
 			}
@@ -200,13 +200,13 @@ BOOL SetRegistryVars(HWND hWnd, GameCtrlData_st &data)
 	}
 	else
 	{
-		CheckError(hWnd, "Unable to write GameCtrl data", res);
+		CheckError("Unable to write GameCtrl data", res);
 		return FALSE;
 	}
 }
 
 
-BOOL WriteDWORD(HWND hWnd, HKEY hKey, const char* name, DWORD pvData)
+BOOL WriteDWORD(HKEY hKey, const char* name, DWORD pvData)
 {
 	if ((0 == hWnd) || (0 == hKey))
 		return FALSE;
@@ -215,7 +215,8 @@ BOOL WriteDWORD(HWND hWnd, HKEY hKey, const char* name, DWORD pvData)
 	LONG res = RegSetValueEx(hKey, TEXT(name), 0, REG_DWORD, (BYTE*)&pvData, pcbData);
 	if (ERROR_SUCCESS != res)
 	{
-		CheckError(hWnd, "Unable to write dword value", res);
+		CheckError("Unable to write dword value", res);
+		RegCloseKey(hKey);
 		return FALSE;
 	}
 

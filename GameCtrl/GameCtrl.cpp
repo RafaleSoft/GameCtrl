@@ -8,10 +8,10 @@
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE hInst;								// current instance
-TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
-HWND hWnd = 0;
+HINSTANCE	hInst;								// current instance
+TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
+TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
+HWND		hWnd = NULL;
 
 
 int CHRONO_DEFAULT = 140;
@@ -46,7 +46,13 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
 	InitCommonControls();
-
+	/*
+	if (FALSE == ParseCmdLine(lpCmdLine))
+	{
+		Error(IDS_USAGE);
+		return -1;
+	}
+	*/
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
@@ -73,10 +79,10 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
 
-	SetRegistryVars(hWnd,data);
+	SetRegistryVars(data);
 
 	// Wait until game process exits if any.
-	stopGame(hWnd);
+	stopGame();
 
 	return (int) msg.wParam;
 }
@@ -119,96 +125,32 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //        In this function, we save the instance handle in a global variable and
 //        create and display the main program window.
 //
-#include <processthreadsapi.h>
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
-
 	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
 					CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, NULL, NULL, hInstance, NULL);
 
 	if (!hWnd)
 	{
-		CheckError(hWnd, "Unable to create window", ::GetLastError());
+		CheckError("Unable to create window", ::GetLastError());
 		return FALSE;
 	}
 
-	if (!GetRegistryVars(hWnd,data))
+	if (!GetRegistryVars(data))
 		return FALSE;
 	else
 		adjustGameTime(data);
 
-	if (FALSE == FindUser("GameCtrl"))
+	if (FALSE == CheckInstall())
 	{
-		MessageBox(hWnd, "Utilisateur GameCtrl non installé, création du login", "Installation GameCtrl", MB_OK);
-
-		if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
-		{
-			BOOL logon = ImpersonateLoggedOnUser(GetAuthenticatedUser());
-			if (TRUE == logon)
-			{
-				CreateUser("GameCtrl");
-				RevertToSelf();
-			}
-		}
-		else
-			MessageBox(hWnd, "Authentification incorrecte !", "Installation GameCtrl", MB_OK);
+		MessageBox(hWnd, "Installation de GameCtrl corrompue", "Erreur grave", MB_OK);
+		return FALSE;
 	}
-	else
-	{
-		/*
-		if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
-		{
-			HANDLE newToken = 0;
-			BOOL res = DuplicateTokenEx(GetAuthenticatedUser(), MAXIMUM_ALLOWED, NULL, SecurityAnonymous, TokenPrimary, &newToken);
-			if (TRUE == res)
-			{
-				char buffer[256];
-				DWORD bsize = 256;
-				GetUserName(buffer, &bsize);
-				if (!strcmp(buffer,"Fabrice"))
-					DeleteUser("GameCtrl");
-				else
-				{
-					STARTUPINFOW        si;
-					PROCESS_INFORMATION pi;
-
-					memset(&si, 0, sizeof(STARTUPINFO));
-					memset(&pi, 0, sizeof(PROCESS_INFORMATION));
-					si.cb = sizeof(STARTUPINFO);
-					si.lpTitle = L"Play Game";
-					si.lpDesktop = L"winsta0\default";
-					
-					res = CreateProcessWithLogonW(	L"Fabrice",
-													L".",
-													L"RaFaLe99",
-													LOGON_WITH_PROFILE,
-													L"F:\\VisualStudioProjects\\GameCtrl\\Debug\\GameCtrl.exe",
-													NULL,
-													CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE | NORMAL_PRIORITY_CLASS,
-													NULL,
-													NULL,
-													&si,
-													&pi);
-					if (FALSE == res)
-						CheckError(hWnd, "Unable to run GameCtrl with priviledged rights", ::GetLastError());
-
-					return FALSE;
-				}
-			}
-			else
-				CheckError(hWnd, "Unable to run GameCtrl with priviledged rights", ::GetLastError());
-		}
-		*/
-		MessageBox(hWnd, "Utilisation du compte GameCtrl", "Installation GameCtrl", MB_OK);
-	}
-	
-	//return FALSE;
-	//SetSecurity(data.Games[0]);
 
 	if (0 == data.CHRONO)
 	{
-		::MessageBox(hWnd, "Temps de jeu dépassé !", "Erreur", MB_OK);
+		Error(IDS_OUTOFTIME);
 		return FALSE;
 	}
 	
@@ -220,7 +162,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000 * 60, NULL))
 	{
-		CheckError(hWnd, "Error creating timer", ::GetLastError());
+		CheckError("Error creating timer", ::GetLastError());
 		return FALSE;
 	}
 
@@ -278,7 +220,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			data.CHRONO = data.CHRONO - 1;
 			//	Terminate current game if any when timer reaches 0
 			if (0 == data.CHRONO)
-				stopGame(hWnd);
+				stopGame();
 			::InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
@@ -299,7 +241,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_DESTROY:
 		{
 			//	Terminate current game if any,
-			stopGame(hWnd);
+			stopGame();
 			//	Quit application.
 			PostQuitMessage(0);
 			break;

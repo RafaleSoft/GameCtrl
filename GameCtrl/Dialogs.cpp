@@ -6,14 +6,10 @@
 #include <stdio.h>
 
 
-static HANDLE AdminToken = NULL;
+static DWORD LOGON_MODEL = LOGON32_LOGON_NETWORK;
 static GameCtrlData_st *pSaveData = NULL;
 static int selectedGame = -1;
 
-HANDLE GetAuthenticatedUser(void)
-{
-	return AdminToken;
-}
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -47,8 +43,11 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			SetDlgItemText(hDlg, IDC_EDIT_USERNAME, "");
 			SetDlgItemText(hDlg, IDC_EDIT_PASSWORD, "");
-			AdminToken = NULL;
 			res = (INT_PTR)TRUE;
+
+			DWORD param = (DWORD)lParam;
+			LOGON_MODEL = param;
+			
 			break;
 		}
 		case WM_COMMAND:
@@ -61,13 +60,17 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_PASSWORD), pass, 32);
 
 				HANDLE token = NULL;
-				BOOL logon = LogonUser(user, ".", pass, LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT, &token);
-				if ((TRUE == logon) && IsUserAdmin(token))
-				//if (TRUE == logon)
+				BOOL logon = LogonUser(user, ".", pass, LOGON_MODEL, LOGON32_PROVIDER_DEFAULT, &token);
+				if (TRUE == logon)
 				{
-					AdminToken = token;
-					EndDialog(hDlg, LOWORD(wParam));
-					res = (INT_PTR)TRUE;
+					if (((LOGON32_LOGON_NETWORK == LOGON_MODEL) && IsUserAdmin(token)) ||
+						(LOGON32_LOGON_INTERACTIVE == LOGON_MODEL))
+					{
+						EndDialog(hDlg, LOWORD(wParam));
+						res = (INT_PTR)TRUE;
+					}
+					else
+						EndDialog(hDlg, IDCANCEL);
 				}
 				else
 					EndDialog(hDlg, IDCANCEL);
@@ -337,7 +340,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			//	User clicks run, run game and close window.
 			else if (LOWORD(wParam) == IDOK)
 			{
-				runGame(hDlg, pSaveData->Games[selectedGame]);
+				runGame(pSaveData->Games[selectedGame]);
 				EndDialog(hDlg, LOWORD(wParam));
 				return (INT_PTR)TRUE;
 			}

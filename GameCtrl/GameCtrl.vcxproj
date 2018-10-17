@@ -83,6 +83,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Acl.cpp" />
     <ClCompile Include="Dialogs.cpp" />
     <ClCompile Include="GameCtrl.cpp" />
     <ClCompile Include="Registry.cpp" />
