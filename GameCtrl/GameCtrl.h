@@ -14,17 +14,29 @@ struct GameCtrlData_st
 	const char**	Games;
 };
 
+struct GameCtrlOptions_st
+{
+	BOOL doInstall;
+	BOOL doUnInstall;
+	BOOL doUsage;
+	BOOL doVersion;
+};
+
+
 //	The one and only one main window.
 extern HWND hWnd;
 
 //	Utils interface
 void	Error(DWORD msg);
+void	Warning(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
-BOOL	CheckInstall();
+BOOL	CheckInstall(GameCtrlData_st &data);
 BOOL	runGame(const char *path);
 BOOL	stopGame(void);
 void	adjustGameTime(GameCtrlData_st &data);
-BOOL	ParseCmdLine(LPSTR lpCmdLine);
+BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
+BOOL	Install(void);
+BOOL	UnInstall(void);
 
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);
@@ -33,7 +45,7 @@ BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName);
 BOOL	DeleteUser(const char* UserName);
 BOOL	StartInteractiveClientProcess(LPTSTR lpCommandLine, HANDLE hToken);
-BOOL	ExecuteAsAdmin(HWND hWnd, const char *file);
+BOOL	ExecuteAsAdmin(const char *file, const char *admin);
 
 //	Registry helpers
 BOOL	GetRegistryVars(GameCtrlData_st &data);

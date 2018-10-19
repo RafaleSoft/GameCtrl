@@ -9,6 +9,8 @@
 //	Process startup info
 static STARTUPINFO si;
 static PROCESS_INFORMATION	pi;
+static const char *ERREUR_STR = "Erreur";
+static const char *WARNING_STR = "Attention";
 
 #define MAX_LOADSTRING 256
 
@@ -18,7 +20,7 @@ void Error(DWORD msg)
 	TCHAR		szMessage[MAX_LOADSTRING];
 
 	LoadString(hInstance, msg, szMessage, MAX_LOADSTRING);
-	MessageBox(hWnd, szMessage, "Erreur", MB_OK | MB_ICONERROR);
+	MessageBox(hWnd, szMessage, ERREUR_STR, MB_OK | MB_ICONERROR);
 }
 
 void Warning(DWORD msg)
@@ -27,7 +29,7 @@ void Warning(DWORD msg)
 	TCHAR		szMessage[MAX_LOADSTRING];
 
 	LoadString(hInstance, msg, szMessage, MAX_LOADSTRING);
-	MessageBox(hWnd, szMessage, "Attention", MB_OK | MB_ICONWARNING);
+	MessageBox(hWnd, szMessage, WARNING_STR, MB_OK | MB_ICONWARNING);
 }
 
 
@@ -43,7 +45,7 @@ void CheckError(const char* msg, DWORD err)
 					  (LPTSTR)&lpMsgBuf, 0, NULL);
 
 		const char *msg = (NULL != lpMsgBuf) ? (const char*)lpMsgBuf : "Unknown Win32 error.";
-		MessageBox(hWnd, (LPTSTR)lpMsgBuf, "Erreur", MB_OK);
+		MessageBox(hWnd, (LPTSTR)lpMsgBuf, ERREUR_STR, MB_OK | MB_ICONERROR);
 
 		if (NULL != lpMsgBuf)
 			LocalFree(lpMsgBuf);
@@ -51,42 +53,34 @@ void CheckError(const char* msg, DWORD err)
 	}
 }
 
-BOOL CheckInstall(void)
+BOOL CheckInstall(GameCtrlData_st &data)
 {
+	BOOL res = TRUE;
+
 	if (FALSE == FindUser("GameCtrl"))
-	{
-		MessageBox(hWnd, "Utilisateur GameCtrl non installé, création du login", "Installation GameCtrl", MB_OK | MB_ICONEXCLAMATION);
+		res = FALSE;
 
-		CreateUser("GameCtrl");
-	}
-	else
-	{
-		char buffer[MAX_LOADSTRING];
-
-		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
-
-		//ExecuteAsAdmin(hWnd, buffer);
-
-		MessageBox(hWnd, "Utilisation du compte GameCtrl", "Installation GameCtrl", MB_OK);
-	}
-
-	return TRUE;
+	return res;
 }
 
-BOOL ParseCmdLine(LPSTR lpCmdLine)
+BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 {
 	CHAR *pos = lpCmdLine;
 	BOOL res = TRUE;
 
-	BOOL doInstall = FALSE;
+	memset(&options, 0, sizeof(GameCtrlOptions_st));
 
-	while (NULL != pos)
+	while ((NULL != pos) && (TRUE == res))
 	{
-		if ('-' == *pos)
+		if (0 == *pos)
+			pos = NULL;
+		else if (' ' == *pos)
+			pos = pos + 1;
+		else if ('-' == *pos)
 		{
 			if (NULL == *(pos + 1))
 			{
-				res = FALSE;
+				res = FALSE;	// a dash alone at end of line is an error.
 				pos = NULL;
 				continue;
 			}
@@ -94,38 +88,58 @@ BOOL ParseCmdLine(LPSTR lpCmdLine)
 			char opt = *(pos + 1);
 			if ('-' == opt)
 			{
-				if ((pos + 2) == strstr(pos + 2, "install"))
+				pos = pos + 2;
+				if (pos == strstr(pos, "install"))
 				{
-					doInstall = TRUE;
-					pos = pos + 8;
+					options.doInstall = TRUE;
+					pos = pos + 7;
+				}
+				else if (pos == strstr(pos, "uninstall"))
+				{
+					options.doUnInstall = TRUE;
+					pos = pos + 9;
+				}
+				else if (pos == strstr(pos, "version"))
+				{
+					options.doVersion = TRUE;
+					pos = pos + 7;
+				}
+				else if (pos == strstr(pos, "usage"))
+				{
+					options.doUsage = TRUE;
+					pos = pos + 5;
 				}
 				else
-				{
-					res = FALSE;
-					pos = NULL;
-				}
+					res = FALSE;	// Unknown option
 			}
 			else
 			{
 				switch (opt)
 				{
 					case 'i':
-						doInstall = TRUE;
-						pos = pos + 3;
+						options.doInstall = TRUE;
+						pos = pos + 2;
 						break;
 					case 'u':
+						options.doUnInstall = TRUE;
+						pos = pos + 2;
+						break;
+					case 'h':
+						options.doUsage = TRUE;
+						pos = pos + 2;
+						break;
+					case 'v':
+						options.doVersion = TRUE;
+						pos = pos + 2;
 						break;
 					default:
-						res = FALSE;
+						res = FALSE;	// Unknown option
 						break;
 				}
 			}
 		}
 		else
-		{
 			res = FALSE;
-			pos = NULL;
-		}
 	}
 
 	return res;
@@ -243,6 +257,29 @@ void adjustGameTime(GameCtrlData_st &data)
 
 		cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
 	}
+}
+
+
+BOOL Install(void)
+{
+	BOOL res = false;
+
+	if (TRUE == FindUser("GameCtrl"))
+		DeleteUser("GameCtrl");
+	
+	Warning(IDS_CREATEUSER);
+	CreateUser("GameCtrl");
+
+	return res;
+}
+
+BOOL UnInstall(void)
+{
+	BOOL res = false;
+
+	DeleteUser("GameCtrl");
+
+	return res;
 }
 
 

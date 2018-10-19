@@ -266,7 +266,7 @@ BOOL SetSecurity(const char* file)
 			}
 		}
 
-		MessageBox(NULL, file, "GetFileSecurity", MB_OK);
+		//MessageBox(NULL, file, "GetFileSecurity", MB_OK);
 	}
 
 	return FALSE;

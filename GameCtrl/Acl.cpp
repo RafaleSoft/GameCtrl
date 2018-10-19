@@ -113,7 +113,7 @@ BOOL CreateUser(const char* UserName)
 	wchar_t uname[256];
 	MultiByteToWideChar(CP_ACP, 0, UserName, -1, uname, 256);
 	wchar_t pwd[256];
-	MultiByteToWideChar(CP_ACP, 0, "RaFaLe99", -1, pwd, 256);
+	MultiByteToWideChar(CP_ACP, 0, UserName, -1, pwd, 256);
 	ui.usri1_name = uname;
 	ui.usri1_password = pwd;
 	ui.usri1_priv = USER_PRIV_USER;
@@ -232,9 +232,7 @@ BOOL FindUser(const char* UserName)
 				int size = 0;
 				WideCharToMultiByte(CP_ACP, 0, users[i].usri1_name, -1, buffer, 256, NULL, NULL);
 				if (!strcmp(UserName, buffer))
-				{
 					res = TRUE;
-				}
 			}
 			break;
 		}
@@ -278,9 +276,7 @@ BOOL FindGroup(const char* GroupName)
 				int size = 0;
 				WideCharToMultiByte(CP_ACP, 0, groups[i].grpi3_name, -1, buffer, 256, NULL, NULL);
 				if (!strcmp(GroupName, buffer))
-				{
 					res = TRUE;
-				}
 			}
 			break;
 		}
@@ -294,7 +290,7 @@ BOOL FindGroup(const char* GroupName)
 }
 
 
-BOOL ExecuteAsAdmin(HWND hWnd, const char *file)
+BOOL ExecuteAsAdmin(const char *file, const char *options)
 {
 	SHELLEXECUTEINFO shExInfo = { 0 };
 	shExInfo.cbSize = sizeof(shExInfo);
@@ -305,7 +301,7 @@ BOOL ExecuteAsAdmin(HWND hWnd, const char *file)
 	// Operation to perform
 	shExInfo.lpFile = _T(file);
 	// Application to start
-	shExInfo.lpParameters = "";
+	shExInfo.lpParameters = _T(options);
 	// Additional parameters
 	shExInfo.lpDirectory = 0;
 	shExInfo.nShow = SW_SHOW;

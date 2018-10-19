@@ -9,13 +9,10 @@
 
 // Global Variables:
 HINSTANCE	hInst;								// current instance
-TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
-TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
 HWND		hWnd = NULL;
 
-
-int CHRONO_DEFAULT = 140;
-int DAYS_DEFAULT = 7;
+static const int CHRONO_DEFAULT = 140;
+static const int DAYS_DEFAULT = 7;
 UINT nIDEvent = 0;
 HFONT font = 0;
 
@@ -25,149 +22,9 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							{ 0, 0 },
 							1,
 							NULL };
+GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE };
 
 
-// Forward declarations of functions included in this code module:
-ATOM				MyRegisterClass(HINSTANCE hInstance);
-BOOL				InitInstance(HINSTANCE, int);
-LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
-void				adjustGameTime(GameCtrlData_st &data);
-
-
-//
-//	Main entry point.
-//
-int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPTSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
-{
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
-
-	InitCommonControls();
-	/*
-	if (FALSE == ParseCmdLine(lpCmdLine))
-	{
-		Error(IDS_USAGE);
-		return -1;
-	}
-	*/
-	// Initialize global strings
-	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
-	MyRegisterClass(hInstance);
-
-	// Perform application initialization:
-	if (!InitInstance (hInstance, nCmdShow))
-	{
-		return FALSE;
-	}
-
-	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMECTRL));
-
-	// Main message loop:
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0))
-	{
-		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
-
-	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
-
-	SetRegistryVars(data);
-
-	// Wait until game process exits if any.
-	stopGame();
-
-	return (int) msg.wParam;
-}
-
-
-
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
-ATOM MyRegisterClass(HINSTANCE hInstance)
-{
-	WNDCLASSEX wcex;
-
-	wcex.cbSize = sizeof(WNDCLASSEX);
-
-	wcex.style			= CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc	= WndProc;
-	wcex.cbClsExtra		= 0;
-	wcex.cbWndExtra		= 0;
-	wcex.hInstance		= hInstance;
-	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GAMECTRL));
-	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW+1);
-	wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_GAMECTRL);
-	wcex.lpszClassName	= szWindowClass;
-	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
-
-	return RegisterClassEx(&wcex);
-}
-
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
-{
-	hInst = hInstance; // Store instance handle in our global variable
-	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-					CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, NULL, NULL, hInstance, NULL);
-
-	if (!hWnd)
-	{
-		CheckError("Unable to create window", ::GetLastError());
-		return FALSE;
-	}
-
-	if (!GetRegistryVars(data))
-		return FALSE;
-	else
-		adjustGameTime(data);
-
-	if (FALSE == CheckInstall())
-	{
-		MessageBox(hWnd, "Installation de GameCtrl corrompue", "Erreur grave", MB_OK);
-		return FALSE;
-	}
-
-	if (0 == data.CHRONO)
-	{
-		Error(IDS_OUTOFTIME);
-		return FALSE;
-	}
-	
-	font = ::CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
-	::ShowCursor(TRUE);
-
-	ShowWindow(hWnd, nCmdShow);
-	UpdateWindow(hWnd);
-
-	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000 * 60, NULL))
-	{
-		CheckError("Error creating timer", ::GetLastError());
-		return FALSE;
-	}
-
-	return TRUE;
-}
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -201,7 +58,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
 						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
 					else
-						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
+						Error(IDS_INVALIDUSER);
 					break;
 				case ID_CONFIG_GAMES:
 					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
@@ -252,5 +109,175 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+
+//
+//  FUNCTION: MyRegisterClass()
+//
+//  PURPOSE: Registers the window class.
+//
+ATOM MyRegisterClass(HINSTANCE hInstance, TCHAR *szWindowClass)
+{
+	WNDCLASSEX wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+
+	wcex.style			= CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc	= WndProc;
+	wcex.cbClsExtra		= 0;
+	wcex.cbWndExtra		= 0;
+	wcex.hInstance		= hInstance;
+	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GAMECTRL));
+	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
+	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW+1);
+	wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_GAMECTRL);
+	wcex.lpszClassName	= szWindowClass;
+	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	return RegisterClassEx(&wcex);
+}
+
+//
+//   FUNCTION: InitInstance(HINSTANCE, int)
+//
+//   PURPOSE: Saves instance handle and creates main window
+//
+//   COMMENTS:
+//
+//        In this function, we save the instance handle in a global variable and
+//        create and display the main program window.
+//
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+	TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
+	TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
+
+	// Initialize global strings
+	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
+	MyRegisterClass(hInstance, szWindowClass);
+
+	hInst = hInstance; // Store instance handle in our global variable
+	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+					CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, NULL, NULL, hInstance, NULL);
+
+	if (!hWnd)
+	{
+		CheckError("Unable to create window", ::GetLastError());
+		return FALSE;
+	}
+
+	if (!GetRegistryVars(data))
+		return FALSE;
+	else
+		adjustGameTime(data);
+	/*
+	if (FALSE == CheckInstall(data))
+	{
+		Error(IDS_NOTINSTALLED);
+
+		char buffer[MAX_LOADSTRING];
+		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+
+		ExecuteAsAdmin(buffer, "--install");
+
+		return FALSE;
+	}
+	else
+	{
+		Error(IDS_INVALIDUSER);
+
+		char buffer[MAX_LOADSTRING];
+		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+
+		ExecuteAsAdmin(buffer, "--uninstall");
+
+		return FALSE;
+	}
+	*/
+	if (0 == data.CHRONO)
+	{
+		Error(IDS_OUTOFTIME);
+		return FALSE;
+	}
+	
+	font = ::CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
+	::ShowCursor(TRUE);
+
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
+
+	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000 * 60, NULL))
+	{
+		CheckError("Error creating timer", ::GetLastError());
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+
+//
+//	Main entry point.
+//
+int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
+					   _In_opt_ HINSTANCE hPrevInstance,
+					   _In_ LPTSTR    lpCmdLine,
+					   _In_ int       nCmdShow)
+{
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	InitCommonControls();
+	
+	if (FALSE == ParseCmdLine(lpCmdLine, options))
+	{
+		Error(IDS_USAGE);
+		return -1;
+	}
+	else
+	{
+		BOOL res = TRUE;
+		if (options.doInstall)
+			res = Install();
+		else if (options.doUnInstall)
+			res = UnInstall();
+		else if (options.doVersion)
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+		else if (options.doUsage)
+			Warning(IDS_USAGE);
+		else	// No options : normal launch
+			res = TRUE;
+
+		if (FALSE == res)
+			return -1;
+	}
+	
+	// Perform application initialization:
+	if (!InitInstance(hInstance, nCmdShow))
+		return FALSE;
+
+	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMECTRL));
+
+	// Main message loop:
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+
+	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
+
+	SetRegistryVars(data);
+
+	// Wait until game process exits if any.
+	stopGame();
+
+	return (int)msg.wParam;
+}
 
 
