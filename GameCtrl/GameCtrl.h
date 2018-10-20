@@ -22,6 +22,7 @@ struct GameCtrlOptions_st
 	BOOL doVersion;
 };
 
+#define DEFAULT_BUFSIZE 256
 
 //	The one and only one main window.
 extern HWND hWnd;
@@ -29,8 +30,9 @@ extern HWND hWnd;
 //	Utils interface
 void	Error(DWORD msg);
 void	Warning(DWORD msg);
+void	Info(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
-BOOL	CheckInstall(GameCtrlData_st &data);
+BOOL	CheckInstall(const GameCtrlData_st &data);
 BOOL	runGame(const char *path);
 BOOL	stopGame(void);
 void	adjustGameTime(GameCtrlData_st &data);
@@ -49,7 +51,7 @@ BOOL	ExecuteAsAdmin(const char *file, const char *admin);
 
 //	Registry helpers
 BOOL	GetRegistryVars(GameCtrlData_st &data);
-BOOL	SetRegistryVars(GameCtrlData_st &data);
+BOOL	SetRegistryVars(const GameCtrlData_st &data);
 
 // Dialog callbacks
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);

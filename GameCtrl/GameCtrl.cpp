@@ -170,7 +170,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	else
 		adjustGameTime(data);
-	/*
+
 	if (FALSE == CheckInstall(data))
 	{
 		Error(IDS_NOTINSTALLED);
@@ -182,18 +182,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		return FALSE;
 	}
-	else
-	{
-		Error(IDS_INVALIDUSER);
 
-		char buffer[MAX_LOADSTRING];
-		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
-
-		ExecuteAsAdmin(buffer, "--uninstall");
-
-		return FALSE;
-	}
-	*/
 	if (0 == data.CHRONO)
 	{
 		Error(IDS_OUTOFTIME);
@@ -237,6 +226,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	}
 	else
 	{
+		BOOL normalLaunch = FALSE;
 		BOOL res = TRUE;
 		if (options.doInstall)
 			res = Install();
@@ -245,12 +235,17 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		else if (options.doVersion)
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 		else if (options.doUsage)
-			Warning(IDS_USAGE);
+			Info(IDS_USAGE);
 		else	// No options : normal launch
-			res = TRUE;
+			normalLaunch = TRUE;
 
-		if (FALSE == res)
-			return -1;
+		if (FALSE == normalLaunch)
+		{
+			if (FALSE == res)
+				return -1;
+			else
+				return 1;
+		}
 	}
 	
 	// Perform application initialization:

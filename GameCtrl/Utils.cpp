@@ -11,25 +11,33 @@ static STARTUPINFO si;
 static PROCESS_INFORMATION	pi;
 static const char *ERREUR_STR = "Erreur";
 static const char *WARNING_STR = "Attention";
-
-#define MAX_LOADSTRING 256
+static const char *INFO_STR = "Information";
 
 void Error(DWORD msg)
 {
 	HINSTANCE hInstance = GetModuleHandle(NULL);
-	TCHAR		szMessage[MAX_LOADSTRING];
+	TCHAR		szMessage[DEFAULT_BUFSIZE];
 
-	LoadString(hInstance, msg, szMessage, MAX_LOADSTRING);
+	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
 	MessageBox(hWnd, szMessage, ERREUR_STR, MB_OK | MB_ICONERROR);
 }
 
 void Warning(DWORD msg)
 {
 	HINSTANCE hInstance = GetModuleHandle(NULL);
-	TCHAR		szMessage[MAX_LOADSTRING];
+	TCHAR		szMessage[DEFAULT_BUFSIZE];
 
-	LoadString(hInstance, msg, szMessage, MAX_LOADSTRING);
+	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
 	MessageBox(hWnd, szMessage, WARNING_STR, MB_OK | MB_ICONWARNING);
+}
+
+void Info(DWORD msg)
+{
+	HINSTANCE hInstance = GetModuleHandle(NULL);
+	TCHAR		szMessage[DEFAULT_BUFSIZE];
+
+	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
+	MessageBox(hWnd, szMessage, INFO_STR, MB_OK | MB_ICONINFORMATION);
 }
 
 
@@ -53,12 +61,46 @@ void CheckError(const char* msg, DWORD err)
 	}
 }
 
-BOOL CheckInstall(GameCtrlData_st &data)
+BOOL CheckInstall(const GameCtrlData_st &data)
+{
+	BOOL res = FindUser("GameCtrl");
+
+	if (TRUE == res)
+		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
+		{
+			res = SetSecurity(data.Games[i]);
+		}
+
+	return res;
+}
+
+
+BOOL Install(void)
 {
 	BOOL res = TRUE;
 
-	if (FALSE == FindUser("GameCtrl"))
-		res = FALSE;
+	if (TRUE == FindUser("GameCtrl"))
+		res = DeleteUser("GameCtrl");
+
+	if (TRUE == res)
+		res = CreateUser("GameCtrl");
+
+	if (TRUE == res)
+		Info(IDS_INSTALL_SUCCEEDED);
+	else
+		Error(IDS_INSTALL_FAILED);
+
+	return res;
+}
+
+BOOL UnInstall(void)
+{
+	BOOL res = DeleteUser("GameCtrl");
+
+	if (TRUE == res)
+		Info(IDS_UNINSTALL_SUCCEEDED);
+	else
+		Error(IDS_UNINSTALL_FAILED);
 
 	return res;
 }
@@ -259,27 +301,5 @@ void adjustGameTime(GameCtrlData_st &data)
 	}
 }
 
-
-BOOL Install(void)
-{
-	BOOL res = false;
-
-	if (TRUE == FindUser("GameCtrl"))
-		DeleteUser("GameCtrl");
-	
-	Warning(IDS_CREATEUSER);
-	CreateUser("GameCtrl");
-
-	return res;
-}
-
-BOOL UnInstall(void)
-{
-	BOOL res = false;
-
-	DeleteUser("GameCtrl");
-
-	return res;
-}
 
 

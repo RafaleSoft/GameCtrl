@@ -164,113 +164,6 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	return res;
 }
 
-BOOL SetSecurity(const char* file)
-{
-	//SECURITY_INFORMATION RequestedInformation = ATTRIBUTE_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
-	//SECURITY_INFORMATION RequestedInformation = BACKUP_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
-	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
-	PSECURITY_DESCRIPTOR pSecurityDescriptor;
-	unsigned char buffer[256];
-	DWORD              nLength = 256; // sizeof(SECURITY_DESCRIPTOR);
-	DWORD              nLengthNeeded = 0;
-	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer /*&SecurityDescriptor*/, nLength, &nLengthNeeded);
-	if (TRUE != sec)
-	{
-		DWORD err = GetLastError();
-		MessageBox(NULL, file, "GetFileSecurity", MB_OK);
-	}
-	else
-	{
-		pSecurityDescriptor = (PSECURITY_DESCRIPTOR)buffer;
-
-		SECURITY_DESCRIPTOR_CONTROL pControl;
-		DWORD dwRevision = 0;
-		GetSecurityDescriptorControl(pSecurityDescriptor, &pControl, &dwRevision);
-		switch (pControl)
-		{
-			case SE_OWNER_DEFAULTED: break;	// (0x0001)
-			case SE_GROUP_DEFAULTED: break; // (0x0002)
-			case SE_DACL_PRESENT: break; // (0x0004)
-			case SE_DACL_DEFAULTED: break; // (0x0008)
-			case SE_SACL_PRESENT: break; // (0x0010)
-			case SE_SACL_DEFAULTED: break; // (0x0020)
-			case SE_DACL_AUTO_INHERIT_REQ: break; // (0x0100)
-			case SE_SACL_AUTO_INHERIT_REQ: break; // (0x0200)
-			case SE_DACL_AUTO_INHERITED: break; // (0x0400)
-			case SE_SACL_AUTO_INHERITED: break; // (0x0800)
-			case SE_DACL_PROTECTED: break; // (0x1000)
-			case SE_SACL_PROTECTED: break; // (0x2000)
-			case SE_RM_CONTROL_VALID: break; // (0x4000)
-			case SE_SELF_RELATIVE: break; // (0x8000)
-		}
-
-		PACL dacl = NULL;
-		BOOL DaclPresent = FALSE;
-		BOOL DaclDefaulted = FALSE;
-		GetSecurityDescriptorDacl(pSecurityDescriptor, &DaclPresent, &dacl, &DaclDefaulted);
-		for (int j = 0; j < dacl->AceCount; j++)
-		{
-			LPVOID ace;
-			sec = GetAce(dacl, j, &ace);
-			if (TRUE != sec)
-			{
-				DWORD err = GetLastError();
-				MessageBox(NULL, file, "GetFileSecurity", MB_OK);
-			}
-			else
-			{
-				ACE_HEADER *header = (ACE_HEADER*)ace;
-				switch (header->AceFlags)
-				{
-					case OBJECT_INHERIT_ACE: break;
-					case CONTAINER_INHERIT_ACE: break;
-					case NO_PROPAGATE_INHERIT_ACE: break;
-					case INHERIT_ONLY_ACE: break;
-					case INHERITED_ACE: break;
-					case SUCCESSFUL_ACCESS_ACE_FLAG: break;
-					case FAILED_ACCESS_ACE_FLAG: break;
-
-				}
-
-				switch (header->AceType)
-				{
-					case ACCESS_ALLOWED_ACE_TYPE:
-					{
-
-						ACCESS_ALLOWED_ACE *allowed = (ACCESS_ALLOWED_ACE*)ace;
-						DWORD sid = allowed->SidStart;
-						DWORD access = allowed->Mask;
-						break;
-					}
-					case ACCESS_ALLOWED_CALLBACK_ACE_TYPE:
-					{
-						break;
-					}
-					case ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE:
-					{
-						break;
-					}
-					case ACCESS_ALLOWED_COMPOUND_ACE_TYPE:
-					{
-						break;
-					}
-					case ACCESS_ALLOWED_OBJECT_ACE_TYPE:
-					{
-						break;
-					}
-					case ACCESS_DENIED_ACE_TYPE:
-					{
-						break;
-					}
-				}
-			}
-		}
-
-		//MessageBox(NULL, file, "GetFileSecurity", MB_OK);
-	}
-
-	return FALSE;
-}
 
 // Message handler for games dialog.
 INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -283,7 +176,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			pSaveData = (GameCtrlData_st*)lParam;
 
-			HIMAGELIST imageList = ImageList_Create(32, 32, ILC_COLOR32, 16, 8);
+			HIMAGELIST imageList = ImageList_Create(32, 32, ILC_COLOR24, 16, 8);
 			for (long i = 0; i < pSaveData->NbGames; i++)
 			{
 				HICON hh = ExtractIcon(0, pSaveData->Games[i], 0);
@@ -303,8 +196,6 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				const char *exe = strrchr(pSaveData->Games[i],'\\');
 				item.pszText = (LPSTR)(exe+1);
 				ListView_InsertItem(lv, &item);
-
-				SetSecurity(pSaveData->Games[i]);
 			}
 
 			return (INT_PTR)TRUE;
@@ -348,7 +239,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				if ((INT_PTR)TRUE == DialogBox(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password))
 				{
-					char buffer[256] = "\0\0";
+					char buffer[DEFAULT_BUFSIZE] = "\0\0";
 					OPENFILENAME open;
 
 					memset(&open, 0, sizeof(OPENFILENAME));
@@ -357,7 +248,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					open.lpstrFilter = "Game executable\0*.exe\0\0";
 					open.nFilterIndex = 1;
 					open.lpstrFile = buffer;
-					open.nMaxFile = 256;
+					open.nMaxFile = DEFAULT_BUFSIZE;
 
 					if (GetOpenFileName(&open))
 					{
@@ -365,7 +256,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					}
 				}
 				else
-					MessageBox(hDlg, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
+					Error(IDS_INVALIDUSER);
 				break;
 			}
 			break;

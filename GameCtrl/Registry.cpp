@@ -117,7 +117,7 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 	}
 }
 
-BOOL SetRegistryVars(GameCtrlData_st &data)
+BOOL SetRegistryVars(const GameCtrlData_st &data)
 {
 	HKEY hTestKey = 0;
 	LONG res = 0;
