@@ -67,20 +67,18 @@ BOOL CheckInstall(const GameCtrlData_st &data)
 
 	if (TRUE == res)
 		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
-		{
-			res = SetSecurity(data.Games[i]);
-		}
+			res = res & GetSecurity(data.Games[i]);
 
 	return res;
 }
 
 
-BOOL Install(void)
+BOOL Install(BOOL force)
 {
 	BOOL res = TRUE;
 
-	if (TRUE == FindUser("GameCtrl"))
-		res = DeleteUser("GameCtrl");
+	if (TRUE == force)
+		res = UnInstall(force);
 
 	if (TRUE == res)
 		res = CreateUser("GameCtrl");
@@ -93,7 +91,7 @@ BOOL Install(void)
 	return res;
 }
 
-BOOL UnInstall(void)
+BOOL UnInstall(BOOL force)
 {
 	BOOL res = DeleteUser("GameCtrl");
 
@@ -151,6 +149,11 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 					options.doUsage = TRUE;
 					pos = pos + 5;
 				}
+				else if (pos == strstr(pos, "force"))
+				{
+					options.doForce = TRUE;
+					pos = pos + 5;
+				}
 				else
 					res = FALSE;	// Unknown option
 			}
@@ -172,6 +175,10 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 						break;
 					case 'v':
 						options.doVersion = TRUE;
+						pos = pos + 2;
+						break;
+					case 'f':
+						options.doForce = TRUE;
 						pos = pos + 2;
 						break;
 					default:

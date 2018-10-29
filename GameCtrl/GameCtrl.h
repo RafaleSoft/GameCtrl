@@ -20,6 +20,7 @@ struct GameCtrlOptions_st
 	BOOL doUnInstall;
 	BOOL doUsage;
 	BOOL doVersion;
+	BOOL doForce;
 };
 
 #define DEFAULT_BUFSIZE 256
@@ -37,11 +38,12 @@ BOOL	runGame(const char *path);
 BOOL	stopGame(void);
 void	adjustGameTime(GameCtrlData_st &data);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
-BOOL	Install(void);
-BOOL	UnInstall(void);
+BOOL	Install(BOOL force);
+BOOL	UnInstall(BOOL force);
 
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);
+BOOL	GetSecurity(const char* file);
 BOOL	SetSecurity(const char* file);
 BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName);

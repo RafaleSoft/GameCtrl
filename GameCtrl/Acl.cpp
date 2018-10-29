@@ -32,6 +32,41 @@ BOOL IsUserAdmin(HANDLE token)
 	return(b);
 }
 
+BOOL IsSIDAdmin(PSID psid)
+{
+	//	Check SID first
+	if (!IsValidSid(psid))
+		return FALSE;
+
+	SID sid = *(SID*)psid;
+
+	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+	PSID_IDENTIFIER_AUTHORITY auth = GetSidIdentifierAuthority(psid);
+	if (0 != memcmp(auth, &NtAuthority, sizeof(SID_IDENTIFIER_AUTHORITY)))
+		return FALSE;
+
+	PUCHAR count = GetSidSubAuthorityCount(psid);
+	if (NULL == count)
+		return FALSE;
+
+	BOOL b = TRUE;
+	for (UCHAR sa = 0; (sa < *count) && (TRUE == b); sa++)
+	{
+		PDWORD subAuth = GetSidSubAuthority(psid, sa);
+		if (NULL == subAuth)
+			b = FALSE;
+		else
+			b = b && ((SECURITY_AUTHENTICATED_USER_RID == *subAuth) ||
+					  (SECURITY_LOCAL_SYSTEM_RID == *subAuth) ||
+					  (SECURITY_BUILTIN_DOMAIN_RID == *subAuth) ||
+					  (DOMAIN_USER_RID_ADMIN == *subAuth) ||
+					  (DOMAIN_GROUP_RID_ADMINS == *subAuth) ||
+					  (DOMAIN_ALIAS_RID_ADMINS == *subAuth));
+	}
+
+	return b;
+}
+
 LPVOID RetrieveTokenInformationClass(HANDLE hToken, TOKEN_INFORMATION_CLASS InfoClass, LPDWORD lpdwSize)
 {
 	LPVOID pInfo = NULL;
@@ -248,15 +283,13 @@ BOOL FindUser(const char* UserName)
 			break;
 		case NERR_Success:
 		{
+			wchar_t uname[DEFAULT_BUFSIZE];
+			MultiByteToWideChar(CP_ACP, 0, UserName, -1, uname, DEFAULT_BUFSIZE);
+
 			NET_DISPLAY_USER *users = (NET_DISPLAY_USER *)SortedBuffer;
 			for (DWORD i = 0; (FALSE == res) && (i < ReturnedEntryCount); i++)
-			{
-				char buffer[DEFAULT_BUFSIZE];
-				int size = 0;
-				WideCharToMultiByte(CP_ACP, 0, users[i].usri1_name, -1, buffer, DEFAULT_BUFSIZE, NULL, NULL);
-				if (!strcmp(UserName, buffer))
+				if (!wcscmp(users[i].usri1_name, uname))
 					res = TRUE;
-			}
 			break;
 		}
 		default:
@@ -292,15 +325,13 @@ BOOL FindGroup(const char* GroupName)
 			break;
 		case NERR_Success:
 		{
+			wchar_t gname[DEFAULT_BUFSIZE];
+			MultiByteToWideChar(CP_ACP, 0, GroupName, -1, gname, DEFAULT_BUFSIZE);
+
 			NET_DISPLAY_GROUP *groups = (NET_DISPLAY_GROUP *)SortedBuffer;
 			for (DWORD i = 0; (FALSE == res) && (i < ReturnedEntryCount); i++)
-			{
-				char buffer[DEFAULT_BUFSIZE];
-				int size = 0;
-				WideCharToMultiByte(CP_ACP, 0, groups[i].grpi3_name, -1, buffer, DEFAULT_BUFSIZE, NULL, NULL);
-				if (!strcmp(GroupName, buffer))
+				if (!wcscmp(groups[i].grpi3_name, gname))
 					res = TRUE;
-			}
 			break;
 		}
 		default:
@@ -340,73 +371,63 @@ BOOL ExecuteAsAdmin(const char *file, const char *options)
 }
 
 
-BOOL SetSecurity(const char* file)
+
+PACL GetFileDACL(const char* file)
 {
+	if (NULL == file)
+		return NULL;
+
 	//ATTRIBUTE_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
 	//BACKUP_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
 	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
-	
+
 	PSECURITY_DESCRIPTOR pSecurityDescriptor;
 	unsigned char buffer[DEFAULT_BUFSIZE];
 	DWORD         nLength = DEFAULT_BUFSIZE;
 	DWORD         nLengthNeeded = 0;
+
 	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer, nLength, &nLengthNeeded);
 	if (TRUE != sec)
 	{
 		CheckError(file, ::GetLastError());
-		return FALSE;
+		return NULL;
 	}
-
 
 	pSecurityDescriptor = (PSECURITY_DESCRIPTOR)buffer;
 
 	SECURITY_DESCRIPTOR_CONTROL pControl;
 	DWORD dwRevision = 0;
 	GetSecurityDescriptorControl(pSecurityDescriptor, &pControl, &dwRevision);
-	switch (pControl)
-	{
-		case SE_OWNER_DEFAULTED: break;	// (0x0001)
-		case SE_GROUP_DEFAULTED: break; // (0x0002)
-		case SE_DACL_PRESENT: break; // (0x0004)
-		case SE_DACL_DEFAULTED: break; // (0x0008)
-		case SE_SACL_PRESENT: break; // (0x0010)
-		case SE_SACL_DEFAULTED: break; // (0x0020)
-		case SE_DACL_AUTO_INHERIT_REQ: break; // (0x0100)
-		case SE_SACL_AUTO_INHERIT_REQ: break; // (0x0200)
-		case SE_DACL_AUTO_INHERITED: break; // (0x0400)
-		case SE_SACL_AUTO_INHERITED: break; // (0x0800)
-		case SE_DACL_PROTECTED: break; // (0x1000)
-		case SE_SACL_PROTECTED: break; // (0x2000)
-		case SE_RM_CONTROL_VALID: break; // (0x4000)
-		case SE_SELF_RELATIVE: break; // (0x8000)
-	}
+	if (SE_DACL_PRESENT != (pControl & SE_DACL_PRESENT))
+		return NULL;
 
 	PACL dacl = NULL;
 	BOOL DaclPresent = FALSE;
 	BOOL DaclDefaulted = FALSE;
 	GetSecurityDescriptorDacl(pSecurityDescriptor, &DaclPresent, &dacl, &DaclDefaulted);
-	for (int j = 0; j < dacl->AceCount; j++)
+
+	return dacl;
+}
+
+
+BOOL GetSecurity(const char* file)
+{
+	PACL dacl = GetFileDACL(file);
+	if (NULL == dacl)
+		return NULL;
+
+	BOOL sec = TRUE;
+	for (DWORD j = 0; (j < dacl->AceCount) && (TRUE == sec); j++)
 	{
-		LPVOID ace;
-		sec = GetAce(dacl, j, &ace);
-		if (TRUE != sec)
+		LPVOID ace = NULL;
+		sec = sec && GetAce(dacl, j, &ace);
+		if ((TRUE != sec) || (NULL == ace))
 		{
-			CheckError("Impossible d'obtenir les ACL",::GetLastError());
-			continue;
+			CheckError("Impossible d'obtenir les ACL", ::GetLastError());
+			break;
 		}
 
 		ACE_HEADER *header = (ACE_HEADER*)ace;
-		switch (header->AceFlags)
-		{
-			case OBJECT_INHERIT_ACE: break;
-			case CONTAINER_INHERIT_ACE: break;
-			case NO_PROPAGATE_INHERIT_ACE: break;
-			case INHERIT_ONLY_ACE: break;
-			case INHERITED_ACE: break;
-			case SUCCESSFUL_ACCESS_ACE_FLAG: break;
-			case FAILED_ACCESS_ACE_FLAG: break;
-		}
-
 		switch (header->AceType)
 		{
 			case ACCESS_ALLOWED_ACE_TYPE:
@@ -421,107 +442,156 @@ BOOL SetSecurity(const char* file)
 				DWORD bufferSize = DEFAULT_BUFSIZE;
 				SID_NAME_USE use = SidTypeGroup;
 				if (FALSE == LookupAccountSid(NULL, account, Name, &bufferSize, DomainName, &bufferSize, &use))
-				{
-					MessageBox(NULL, "Impossible de trouver le nom du groupe", "Erreur", MB_OK);
-				}
+					Error(IDS_GROUPNOTFOUND);
 				else
 				{
-					char buffer[DEFAULT_BUFSIZE];
-					sprintf_s(buffer, "Nom du compte: %s", Name);
-					MessageBox(NULL, buffer, "Info", MB_OK);
+					if ((FALSE == IsSIDAdmin(account)) &&
+						(0 != strcmp(Name, "GameCtrl")) &&
+						(FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE)))
+					{
+						//char buffer[DEFAULT_BUFSIZE];
+						//sprintf_s(buffer, "Droits incorrects pour le compte: %s", Name);
+						//MessageBox(NULL, buffer, "Info", MB_OK);
+						sec = FALSE;
+					}
 				}
-				/*
-				FILE_GENERIC_EXECUTE =>
-					STANDARD_RIGHTS_EXECUTE;
-					FILE_EXECUTE;
-					FILE_READ_ATTRIBUTES;
-					SYNCHRONIZE;
-					*/
 				break;
 			}
-			case ACCESS_DENIED_ACE_TYPE:
-			{
-				ACCESS_DENIED_ACE *denied = (ACCESS_DENIED_ACE*)ace;
-				DWORD sid = denied->SidStart;
-				DWORD access = denied->Mask;
+			default:
+				sec = FALSE;
 				break;
-			}
-			case ACCESS_ALLOWED_COMPOUND_ACE_TYPE:
-			{
-				// Reserved for future use.
-				break;
-			}
-			case ACCESS_ALLOWED_OBJECT_ACE_TYPE:
-			{
-				ACCESS_ALLOWED_OBJECT_ACE *allowed = (ACCESS_ALLOWED_OBJECT_ACE*)ace;
-				DWORD access = allowed->Mask;
-				DWORD sid = allowed->SidStart;
-				DWORD flags = allowed->Flags;
-				GUID ot = allowed->ObjectType;
-				GUID iot = allowed->InheritedObjectType;
-				break;
-			}
-			case ACCESS_DENIED_OBJECT_ACE_TYPE:
-			{
-				ACCESS_DENIED_OBJECT_ACE *denied = (ACCESS_DENIED_OBJECT_ACE*)ace;
-				DWORD access = denied->Mask;
-				DWORD sid = denied->SidStart;
-				DWORD flags = denied->Flags;
-				GUID ot = denied->ObjectType;
-				GUID iot = denied->InheritedObjectType;
-				break;
-			}
-			case ACCESS_ALLOWED_CALLBACK_ACE_TYPE:
-			{
-				ACCESS_ALLOWED_CALLBACK_ACE *allowed = (ACCESS_ALLOWED_CALLBACK_ACE*)ace;
-				DWORD sid = allowed->SidStart;
-				DWORD access = allowed->Mask;
-				break;
-			}
-			case ACCESS_DENIED_CALLBACK_ACE_TYPE:
-			{
-				ACCESS_DENIED_CALLBACK_ACE *denied = (ACCESS_DENIED_CALLBACK_ACE*)ace;
-				DWORD sid = denied->SidStart;
-				DWORD access = denied->Mask;
-				break;
-			}
-			case ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE:
-			{
-				ACCESS_ALLOWED_CALLBACK_OBJECT_ACE *allowed = (ACCESS_ALLOWED_CALLBACK_OBJECT_ACE*)ace;
-				DWORD access = allowed->Mask;
-				DWORD sid = allowed->SidStart;
-				DWORD flags = allowed->Flags;
-				GUID ot = allowed->ObjectType;
-				GUID iot = allowed->InheritedObjectType;
-				break;
-			}
-			case ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE:
-			{
-				ACCESS_DENIED_CALLBACK_OBJECT_ACE *denied = (ACCESS_DENIED_CALLBACK_OBJECT_ACE*)ace;
-				DWORD access = denied->Mask;
-				DWORD sid = denied->SidStart;
-				DWORD flags = denied->Flags;
-				GUID ot = denied->ObjectType;
-				GUID iot = denied->InheritedObjectType;
-				break;
-			}
 		}
 	}
 
-	return TRUE;
+	return sec;
 }
 
 
 
-#define WINSTA_ALL (WINSTA_ENUMDESKTOPS | WINSTA_READATTRIBUTES | \
-		WINSTA_ACCESSCLIPBOARD | WINSTA_CREATEDESKTOP | \
-		WINSTA_WRITEATTRIBUTES | WINSTA_ACCESSGLOBALATOMS | \
-		WINSTA_EXITWINDOWS | WINSTA_ENUMERATE | WINSTA_READSCREEN | \
-		STANDARD_RIGHTS_REQUIRED)
+BOOL SetFileDACL(const char* file, PACL dacl)
+{
+	if (NULL == file)
+		return NULL;
 
-#define GENERIC_ACCESS (GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE | GENERIC_ALL)
+	//ATTRIBUTE_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
+	//BACKUP_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
+	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
 
+	PSECURITY_DESCRIPTOR pSecurityDescriptor;
+	unsigned char buffer[DEFAULT_BUFSIZE];
+	DWORD         nLength = DEFAULT_BUFSIZE;
+	DWORD         nLengthNeeded = 0;
 
+	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer, nLength, &nLengthNeeded);
+	if (TRUE != sec)
+	{
+		CheckError(file, ::GetLastError());
+		return NULL;
+	}
+
+	pSecurityDescriptor = (PSECURITY_DESCRIPTOR)buffer;
+	return (0 == SetSecurityDescriptorDacl(pSecurityDescriptor, TRUE, dacl, FALSE));
+}
+
+BOOL SetSecurity(const char* file)
+{
+	PACL dacl = GetFileDACL(file);
+	if (NULL == dacl)
+		return NULL;
+	
+	// Obtain the GameCtrlUser Sid
+	TCHAR sidbuffer[DEFAULT_BUFSIZE];
+	DWORD cbSid = DEFAULT_BUFSIZE;
+	TCHAR ReferencedDomainName[DEFAULT_BUFSIZE];
+	DWORD cchReferencedDomainName = DEFAULT_BUFSIZE;
+	SID_NAME_USE peUse;
+	if (FALSE == LookupAccountName(NULL, "GameCtrl", sidbuffer, &cbSid, ReferencedDomainName, &cchReferencedDomainName, &peUse))
+		return FALSE;
+	PSID psid = (PSID)sidbuffer;
+		
+
+	// Get the file ACL size info
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
+	aclSizeInfo.AclBytesInUse = sizeof(ACL);
+	if (!GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation))
+		return FALSE;
+
+	// Compute the size of the new ACL.
+	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse +
+							sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+
+	// Allocate memory for the new ACL.
+	PACL pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
+	if (pNewAcl == NULL)
+		return FALSE;
+
+	// Initialize the new DACL.
+	if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
+	{
+		HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
+		return false;
+	}
+
+	BOOL sec = TRUE;
+	for (DWORD j = 0; (j < aclSizeInfo.AceCount) && (TRUE == sec); j++)
+	{
+		LPVOID ace;
+		sec = GetAce(dacl, j, &ace);
+		if (TRUE != sec)
+		{
+			CheckError("Impossible d'obtenir les ACL",::GetLastError());
+			continue;
+		}
+
+		ACE_HEADER *header = (ACE_HEADER*)ace;
+		switch (header->AceType)
+		{
+			case ACCESS_ALLOWED_ACE_TYPE:
+			{
+				ACCESS_ALLOWED_ACE *allowed = (ACCESS_ALLOWED_ACE*)ace;
+				DWORD sid = allowed->SidStart;
+				DWORD access = allowed->Mask;
+
+				PSID account = (PSID)&(allowed->SidStart);
+				TCHAR Name[DEFAULT_BUFSIZE];
+				TCHAR DomainName[DEFAULT_BUFSIZE];
+				DWORD bufferSize = DEFAULT_BUFSIZE;
+				SID_NAME_USE use = SidTypeGroup;
+				if (FALSE == LookupAccountSid(NULL, account, Name, &bufferSize, DomainName, &bufferSize, &use))
+					Error(IDS_GROUPNOTFOUND);
+				else                                // FILE_GENERIC_EXECUTE =>
+				{									//		STANDARD_RIGHTS_EXECUTE + FILE_EXECUTE + FILE_READ_ATTRIBUTES + SYNCHRONIZE;
+					BOOL bAddAce = FALSE;
+					if (TRUE == IsSIDAdmin(account))
+						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+					else if (FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE))
+					{
+						if (0 != strcmp(Name, "GameCtrl"))
+							access = access & ~FILE_GENERIC_EXECUTE;
+						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+					}
+					else
+						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+
+					if (FALSE == bAddAce)
+						CheckError("Ajout ACE impossible", ::GetLastError());
+				}
+				
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	if (sec)
+		sec = SetFileDACL(file, dacl);
+
+	return sec;
+}
+
+/*
 BOOL AddAceToWindowStation(HWINSTA hwinsta, PSID psid)
 {
 	ACCESS_ALLOWED_ACE   *pace = NULL;
@@ -684,5 +754,5 @@ BOOL AddAceToWindowStation(HWINSTA hwinsta, PSID psid)
 
 	return bSuccess;
 }
-
+*/
 

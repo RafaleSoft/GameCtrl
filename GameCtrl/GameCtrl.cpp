@@ -22,7 +22,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							{ 0, 0 },
 							1,
 							NULL };
-GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE };
+GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE };
 
 
 
@@ -170,7 +170,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	else
 		adjustGameTime(data);
-
+	/*
 	if (FALSE == CheckInstall(data))
 	{
 		Error(IDS_NOTINSTALLED);
@@ -182,6 +182,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		return FALSE;
 	}
+	*/
 
 	if (0 == data.CHRONO)
 	{
@@ -229,9 +230,9 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		BOOL normalLaunch = FALSE;
 		BOOL res = TRUE;
 		if (options.doInstall)
-			res = Install();
+			res = Install(options.doForce);
 		else if (options.doUnInstall)
-			res = UnInstall();
+			res = UnInstall(options.doForce);
 		else if (options.doVersion)
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 		else if (options.doUsage)
