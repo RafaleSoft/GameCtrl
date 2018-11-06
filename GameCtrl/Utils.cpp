@@ -67,7 +67,7 @@ BOOL CheckInstall(const GameCtrlData_st &data)
 
 	if (TRUE == res)
 		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
-			res = res & GetSecurity(data.Games[i]);
+			res = res & CheckSecurity(data.Games[i]);
 
 	return res;
 }

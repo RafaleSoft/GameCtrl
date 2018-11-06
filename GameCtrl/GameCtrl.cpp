@@ -183,7 +183,19 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 	*/
-
+	/*
+	PSECURITY_DESCRIPTOR psec = GetFileDACL(data.Games[0]);
+	if (NULL != psec)
+	{
+		PSECURITY_DESCRIPTOR newPsec = SetSecurity(psec);
+		if (NULL != newPsec)
+			SetFileDACL(data.Games[0], newPsec);
+		else
+			free(newPsec);
+			
+		delete psec;
+	}
+	*/
 	if (0 == data.CHRONO)
 	{
 		Error(IDS_OUTOFTIME);

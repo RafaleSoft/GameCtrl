@@ -43,11 +43,13 @@ BOOL	UnInstall(BOOL force);
 
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);
-BOOL	GetSecurity(const char* file);
-BOOL	SetSecurity(const char* file);
+BOOL	CheckSecurity(const char* file);
+PSECURITY_DESCRIPTOR	SetSecurity(PSECURITY_DESCRIPTOR psec);
 BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName);
 BOOL	DeleteUser(const char* UserName);
+PSECURITY_DESCRIPTOR GetFileDACL(const char* file);
+BOOL	SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec);
 BOOL	StartInteractiveClientProcess(LPTSTR lpCommandLine, HANDLE hToken);
 BOOL	ExecuteAsAdmin(const char *file, const char *admin);
 

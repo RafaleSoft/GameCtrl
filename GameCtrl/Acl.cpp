@@ -372,7 +372,7 @@ BOOL ExecuteAsAdmin(const char *file, const char *options)
 
 
 
-PACL GetFileDACL(const char* file)
+PSECURITY_DESCRIPTOR GetFileDACL(const char* file)
 {
 	if (NULL == file)
 		return NULL;
@@ -382,13 +382,26 @@ PACL GetFileDACL(const char* file)
 	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
 
 	PSECURITY_DESCRIPTOR pSecurityDescriptor;
-	unsigned char buffer[DEFAULT_BUFSIZE];
-	DWORD         nLength = DEFAULT_BUFSIZE;
 	DWORD         nLengthNeeded = 0;
+	unsigned char *buffer = NULL;
 
-	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer, nLength, &nLengthNeeded);
-	if (TRUE != sec)
+	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer, 0, &nLengthNeeded);
+	if (FALSE == sec)
 	{
+		if (::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+		{
+			buffer = new unsigned char[nLengthNeeded];
+			if (NULL != buffer)
+			{
+				DWORD dwLength = nLengthNeeded;
+				sec = GetFileSecurity(file, RequestedInformation, buffer, dwLength, &nLengthNeeded);
+			}
+		}
+	}
+	if (FALSE == sec)
+	{
+		if (NULL != buffer)
+			delete[] buffer;
 		CheckError(file, ::GetLastError());
 		return NULL;
 	}
@@ -399,24 +412,27 @@ PACL GetFileDACL(const char* file)
 	DWORD dwRevision = 0;
 	GetSecurityDescriptorControl(pSecurityDescriptor, &pControl, &dwRevision);
 	if (SE_DACL_PRESENT != (pControl & SE_DACL_PRESENT))
+	{
+		if (NULL != buffer)
+			delete[] buffer;
+		return NULL;
+	}
+
+	return pSecurityDescriptor;
+}
+
+
+BOOL CheckSecurity(const char* file)
+{
+	PSECURITY_DESCRIPTOR psec = GetFileDACL(file);
+	if (NULL == psec)
 		return NULL;
 
 	PACL dacl = NULL;
 	BOOL DaclPresent = FALSE;
 	BOOL DaclDefaulted = FALSE;
-	GetSecurityDescriptorDacl(pSecurityDescriptor, &DaclPresent, &dacl, &DaclDefaulted);
-
-	return dacl;
-}
-
-
-BOOL GetSecurity(const char* file)
-{
-	PACL dacl = GetFileDACL(file);
-	if (NULL == dacl)
-		return NULL;
-
-	BOOL sec = TRUE;
+	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+	
 	for (DWORD j = 0; (j < dacl->AceCount) && (TRUE == sec); j++)
 	{
 		LPVOID ace = NULL;
@@ -463,42 +479,43 @@ BOOL GetSecurity(const char* file)
 		}
 	}
 
+	delete[] psec;
 	return sec;
 }
 
 
 
-BOOL SetFileDACL(const char* file, PACL dacl)
+BOOL SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec)
 {
-	if (NULL == file)
+	if ((NULL == file) || (NULL == psec))
 		return NULL;
 
-	//ATTRIBUTE_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
-	//BACKUP_SECURITY_INFORMATION; == > ERROR_ACCESS_DENIED
 	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
+	BOOL sec = SetFileSecurity(file, RequestedInformation, psec);
 
-	PSECURITY_DESCRIPTOR pSecurityDescriptor;
-	unsigned char buffer[DEFAULT_BUFSIZE];
-	DWORD         nLength = DEFAULT_BUFSIZE;
-	DWORD         nLengthNeeded = 0;
+	if (FALSE == sec)
+		CheckError("Impossible d'installer le nouvel ACL", ::GetLastError());
 
-	BOOL sec = GetFileSecurity(file, RequestedInformation, buffer, nLength, &nLengthNeeded);
-	if (TRUE != sec)
+	return sec;
+}
+
+
+PSECURITY_DESCRIPTOR SetSecurity(PSECURITY_DESCRIPTOR psec)
+{
+	PACL dacl = NULL;
+	BOOL DaclPresent = FALSE;
+	BOOL DaclDefaulted = FALSE;
+	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+	
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
+	sec = GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation);
+	if (FALSE == sec)
 	{
-		CheckError(file, ::GetLastError());
+		CheckError("Impossible d'obtenir les informations sur ACL", ::GetLastError());
 		return NULL;
 	}
 
-	pSecurityDescriptor = (PSECURITY_DESCRIPTOR)buffer;
-	return (0 == SetSecurityDescriptorDacl(pSecurityDescriptor, TRUE, dacl, FALSE));
-}
-
-BOOL SetSecurity(const char* file)
-{
-	PACL dacl = GetFileDACL(file);
-	if (NULL == dacl)
-		return NULL;
-	
 	// Obtain the GameCtrlUser Sid
 	TCHAR sidbuffer[DEFAULT_BUFSIZE];
 	DWORD cbSid = DEFAULT_BUFSIZE;
@@ -506,34 +523,32 @@ BOOL SetSecurity(const char* file)
 	DWORD cchReferencedDomainName = DEFAULT_BUFSIZE;
 	SID_NAME_USE peUse;
 	if (FALSE == LookupAccountName(NULL, "GameCtrl", sidbuffer, &cbSid, ReferencedDomainName, &cchReferencedDomainName, &peUse))
-		return FALSE;
+	{
+		CheckError("Compte de jeu non installé", ::GetLastError());
+		return NULL;
+	}
 	PSID psid = (PSID)sidbuffer;
 		
-
-	// Get the file ACL size info
-	ACL_SIZE_INFORMATION aclSizeInfo;
-	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
-	aclSizeInfo.AclBytesInUse = sizeof(ACL);
-	if (!GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation))
-		return FALSE;
-
 	// Compute the size of the new ACL.
 	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse +
 							sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
 
 	// Allocate memory for the new ACL.
-	PACL pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
+	unsigned char *aclBuffer = new unsigned char[dwNewAclSize];
+	PACL pNewAcl = (PACL)aclBuffer;
 	if (pNewAcl == NULL)
-		return FALSE;
+		return NULL;
 
 	// Initialize the new DACL.
 	if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
 	{
-		HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
-		return false;
+		CheckError("Impossible d'initialiser le nouvel ACL", ::GetLastError());
+		delete[] aclBuffer;
+		return NULL;
 	}
 
-	BOOL sec = TRUE;
+	BOOL bGameCtrlFound = FALSE;
+	sec = TRUE;
 	for (DWORD j = 0; (j < aclSizeInfo.AceCount) && (TRUE == sec); j++)
 	{
 		LPVOID ace;
@@ -568,7 +583,11 @@ BOOL SetSecurity(const char* file)
 					else if (FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE))
 					{
 						if (0 != strcmp(Name, "GameCtrl"))
-							access = access & ~FILE_GENERIC_EXECUTE;
+							allowed->Mask = access & ~FILE_GENERIC_EXECUTE;
+						else
+						{
+							bGameCtrlFound = TRUE;
+						}
 						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
 					}
 					else
@@ -585,174 +604,70 @@ BOOL SetSecurity(const char* file)
 		}
 	}
 
-	if (sec)
-		sec = SetFileDACL(file, dacl);
-
-	return sec;
-}
-
-/*
-BOOL AddAceToWindowStation(HWINSTA hwinsta, PSID psid)
-{
-	ACCESS_ALLOWED_ACE   *pace = NULL;
-	ACL_SIZE_INFORMATION aclSizeInfo;
-	BOOL                 bDaclExist;
-	BOOL                 bDaclPresent;
-	BOOL                 bSuccess = FALSE;
-	DWORD                dwNewAclSize;
-	DWORD                dwSidSize = 0;
-	DWORD                dwSdSizeNeeded;
-	PACL                 pacl;
-	PACL                 pNewAcl = NULL;
-	PSECURITY_DESCRIPTOR psd = NULL;
-	PSECURITY_DESCRIPTOR psdNew = NULL;
-	PVOID                pTempAce;
-	SECURITY_INFORMATION si = DACL_SECURITY_INFORMATION;
-	unsigned int         i;
-
-	__try
+	if (FALSE == bGameCtrlFound)
 	{
-		// Obtain the DACL for the window station.
-		if (!GetUserObjectSecurity(hwinsta,
-			&si,
-			psd,
-			dwSidSize,
-			&dwSdSizeNeeded))
-			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-			{
-				psd = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
-
-				if (psd == NULL)
-					__leave;
-
-				psdNew = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
-
-				if (psdNew == NULL)
-					__leave;
-
-				dwSidSize = dwSdSizeNeeded;
-
-				if (!GetUserObjectSecurity(hwinsta,
-					&si,
-					psd,
-					dwSidSize,
-					&dwSdSizeNeeded))
-					__leave;
-			}
-			else
-				__leave;
-
-		// Create a new DACL.
-		if (!InitializeSecurityDescriptor(psdNew, SECURITY_DESCRIPTOR_REVISION))
-			__leave;
-
-		// Get the DACL from the security descriptor.
-		if (!GetSecurityDescriptorDacl(psd, &bDaclPresent, &pacl, &bDaclExist))
-			__leave;
-
-		// Initialize the ACL.
-		ZeroMemory(&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION));
-		aclSizeInfo.AclBytesInUse = sizeof(ACL);
-
-		// Call only if the DACL is not NULL.
-		if (pacl != NULL)
-		{
-			// get the file ACL size info
-			if (!GetAclInformation(pacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation))
-				__leave;
-		}
-
-		// Compute the size of the new ACL.
-		dwNewAclSize = aclSizeInfo.AclBytesInUse +
-			(2 * sizeof(ACCESS_ALLOWED_ACE)) + (2 * GetLengthSid(psid)) -
-			(2 * sizeof(DWORD));
-
-		// Allocate memory for the new ACL.
-		pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
-
-		if (pNewAcl == NULL)
-			__leave;
-
-		// Initialize the new DACL.
-		if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
-			__leave;
-
-		// If DACL is present, copy it to a new DACL.
-		if (bDaclPresent)
-		{
-			// Copy the ACEs to the new ACL.
-			if (aclSizeInfo.AceCount)
-			{
-				for (i = 0; i < aclSizeInfo.AceCount; i++)
-				{
-					// Get an ACE.
-					if (!GetAce(pacl, i, &pTempAce))
-						__leave;
-
-					// Add the ACE to the new ACL.
-					if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, pTempAce, ((PACE_HEADER)pTempAce)->AceSize))
-						__leave;
-				}
-			}
-		}
-
-		// Add the first ACE to the window station.
-		pace = (ACCESS_ALLOWED_ACE *)HeapAlloc(GetProcessHeap(),
-											   HEAP_ZERO_MEMORY,
-											   sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) -
-											   sizeof(DWORD));
-
-		if (pace == NULL)
-			__leave;
-
-		pace->Header.AceType = ACCESS_ALLOWED_ACE_TYPE;
-		pace->Header.AceFlags = CONTAINER_INHERIT_ACE |
-			INHERIT_ONLY_ACE | OBJECT_INHERIT_ACE;
-		pace->Header.AceSize = LOWORD(sizeof(ACCESS_ALLOWED_ACE) +
-									  GetLengthSid(psid) - sizeof(DWORD));
-		pace->Mask = GENERIC_ACCESS;
-
-		if (!CopySid(GetLengthSid(psid), &pace->SidStart, psid))
-			__leave;
-
-		if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, (LPVOID)pace, pace->Header.AceSize))
-			__leave;
-
-		// Add the second ACE to the window station.
-		pace->Header.AceFlags = NO_PROPAGATE_INHERIT_ACE;
-		pace->Mask = WINSTA_ALL;
-
-		if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, (LPVOID)pace, pace->Header.AceSize))
-			__leave;
-
-		// Set a new DACL for the security descriptor.
-		if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
-			__leave;
-
-		// Set the new security descriptor for the window station.
-		if (!SetUserObjectSecurity(hwinsta, &si, psdNew))
-			__leave;
-
-		// Indicate success.
-		bSuccess = TRUE;
+		sec = AddAccessAllowedAce(pNewAcl, ACL_REVISION, FILE_ALL_ACCESS, psid);
+		if (FALSE == sec)
+			CheckError("Impossible d'ajouter le compte de jeu", ::GetLastError());
 	}
-	__finally
+	
+	sec = IsValidAcl(pNewAcl);
+	if (FALSE == sec)
 	{
-		// Free the allocated buffers.
-		if (pace != NULL)
-			HeapFree(GetProcessHeap(), 0, (LPVOID)pace);
-
-		if (pNewAcl != NULL)
-			HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
-
-		if (psd != NULL)
-			HeapFree(GetProcessHeap(), 0, (LPVOID)psd);
-
-		if (psdNew != NULL)
-			HeapFree(GetProcessHeap(), 0, (LPVOID)psdNew);
+		CheckError("ACL invalide", ::GetLastError());
+		delete[] aclBuffer;
+		pNewAcl = FALSE;
 	}
 
-	return bSuccess;
-}
-*/
+	// Initialize a security descriptor.
+	
+	PSECURITY_DESCRIPTOR pNewSD = (PSECURITY_DESCRIPTOR)malloc(2048);
+	if (NULL == pNewSD)
+		CheckError("Impossible de créer un descripteur de sécurité", ::GetLastError());
 
+	if (!InitializeSecurityDescriptor(pNewSD,SECURITY_DESCRIPTOR_REVISION))
+		CheckError("Impossible d'initialiser un descripteur de sécurité", ::GetLastError());
+	
+	
+
+	SECURITY_DESCRIPTOR_CONTROL pControl;
+	DWORD dwRevision = 0;
+	GetSecurityDescriptorControl(psec, &pControl, &dwRevision);
+	if (SE_SELF_RELATIVE == (pControl & SE_SELF_RELATIVE))
+	{
+		PACL pDacl = (PACL)malloc(256);
+		DWORD dwDaclSize = 256;
+		PACL pSacl = (PACL)malloc(256);
+		DWORD dwSaclSize = 256;
+		PSID pOwner = (PSID)malloc(256);
+		DWORD dwOwnerSize = 256;
+		PSID pPrimaryGroup = (PSID)malloc(256);
+		DWORD dwPrimaryGroupSize = 256;
+
+		DWORD dwAbsoluteSecurityDescriptorSize = 2048;
+		sec = MakeAbsoluteSD(psec,
+							 pNewSD,
+							 &dwAbsoluteSecurityDescriptorSize,
+							 pDacl,
+							 &dwDaclSize,
+							 pSacl,
+							 &dwSaclSize,
+							 pOwner,
+							 &dwOwnerSize,
+							 pPrimaryGroup,
+							 &dwPrimaryGroupSize);
+
+		sec = IsValidSecurityDescriptor(pNewSD);
+	}
+
+	// Upadte DACL of the converted security descriptor.
+	sec = SetSecurityDescriptorDacl(pNewSD, TRUE, pNewAcl, FALSE);
+	if (FALSE == sec)
+	{
+		CheckError("Impossible d'installer le nouvel ACL", ::GetLastError());
+		free(pNewSD);
+		pNewSD = NULL;
+	}
+
+	return pNewSD;
+}
