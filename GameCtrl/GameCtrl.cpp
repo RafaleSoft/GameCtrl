@@ -22,7 +22,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							{ 0, 0 },
 							1,
 							NULL };
-GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE };
+GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
 
 
@@ -38,16 +38,12 @@ GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE };
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	int wmId, wmEvent;
-	PAINTSTRUCT ps;
-	HDC hdc;
-
 	switch (message)
 	{
 		case WM_COMMAND:
 		{
-			wmId = LOWORD(wParam);
-			wmEvent = HIWORD(wParam);
+			int wmId = LOWORD(wParam);
+			int wmEvent = HIWORD(wParam);
 			// Parse the menu selections:
 			switch (wmId)
 			{
@@ -55,7 +51,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 					break;
 				case ID_CONFIG_TIMELIMITER:
-					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
+					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
 						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
 					else
 						Error(IDS_INVALIDUSER);
@@ -83,7 +79,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_PAINT:
 		{
-			hdc = BeginPaint(hWnd, &ps);
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hWnd, &ps);
 
 			::SelectObject(hdc, font);
 			int hour = data.CHRONO / 60;
@@ -104,7 +101,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 		default:
+		{
 			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
 	}
 	return 0;
 }
@@ -170,7 +170,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	else
 		adjustGameTime(data);
-	/*
+
+	if (FALSE == adjustMenu(data))
+	{
+		CheckError("Unable to create window menu", ::GetLastError());
+		return FALSE;
+	}
+
 	if (FALSE == CheckInstall(data))
 	{
 		Error(IDS_NOTINSTALLED);
@@ -182,20 +188,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		return FALSE;
 	}
-	*/
-	/*
-	PSECURITY_DESCRIPTOR psec = GetFileDACL(data.Games[0]);
-	if (NULL != psec)
-	{
-		PSECURITY_DESCRIPTOR newPsec = SetSecurity(psec);
-		if (NULL != newPsec)
-			SetFileDACL(data.Games[0], newPsec);
-		else
-			free(newPsec);
-			
-		delete psec;
-	}
-	*/
+
+	
 	if (0 == data.CHRONO)
 	{
 		Error(IDS_OUTOFTIME);

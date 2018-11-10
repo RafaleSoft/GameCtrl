@@ -21,6 +21,7 @@ struct GameCtrlOptions_st
 	BOOL doUsage;
 	BOOL doVersion;
 	BOOL doForce;
+	BOOL doRun;
 };
 
 #define DEFAULT_BUFSIZE 256
@@ -37,6 +38,7 @@ BOOL	CheckInstall(const GameCtrlData_st &data);
 BOOL	runGame(const char *path);
 BOOL	stopGame(void);
 void	adjustGameTime(GameCtrlData_st &data);
+BOOL	adjustMenu(GameCtrlData_st &data);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
 BOOL	Install(BOOL force);
 BOOL	UnInstall(BOOL force);
@@ -44,14 +46,17 @@ BOOL	UnInstall(BOOL force);
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);
 BOOL	CheckSecurity(const char* file);
-PSECURITY_DESCRIPTOR	SetSecurity(PSECURITY_DESCRIPTOR psec);
+PACL	SetSecurity(PSECURITY_DESCRIPTOR psec);
 BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName);
 BOOL	DeleteUser(const char* UserName);
 PSECURITY_DESCRIPTOR GetFileDACL(const char* file);
-BOOL	SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec);
+BOOL	SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec, PACL pNewAcl);
 BOOL	StartInteractiveClientProcess(LPTSTR lpCommandLine, HANDLE hToken);
 BOOL	ExecuteAsAdmin(const char *file, const char *admin);
+BOOL	AddAceToWindowStation(HWINSTA hwinsta, PSID psid);
+BOOL	AddAceToDesktop(HDESK hdesk, PSID psid);
+BOOL	ObtainSid(HANDLE hToken, PSID *psid);
 
 //	Registry helpers
 BOOL	GetRegistryVars(GameCtrlData_st &data);

@@ -47,6 +47,8 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 			DWORD param = (DWORD)lParam;
 			LOGON_MODEL = param;
+			if (0 == LOGON_MODEL)
+				LOGON_MODEL = LOGON32_LOGON_NETWORK;
 			
 			break;
 		}
@@ -237,7 +239,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			else if (LOWORD(wParam) == IDADD)
 			{
-				if ((INT_PTR)TRUE == DialogBox(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password))
+				if ((INT_PTR)TRUE == DialogBoxParam(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password, LOGON32_LOGON_NETWORK))
 				{
 					char buffer[DEFAULT_BUFSIZE] = "\0\0";
 					OPENFILENAME open;
@@ -250,10 +252,27 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					open.lpstrFile = buffer;
 					open.nMaxFile = DEFAULT_BUFSIZE;
 
-					if (GetOpenFileName(&open))
+					// TODO: move to IFileOpenDialog
+					if (GetOpenFileName(&open) && (strlen(buffer) > 0))
 					{
-
+						PSECURITY_DESCRIPTOR psec = GetFileDACL(buffer);
+						if (NULL != psec)
+						{
+							PACL newDacl = SetSecurity(psec);
+							if (NULL != newDacl)
+							{
+								if (FALSE == SetFileDACL(buffer, psec, newDacl))
+									Error(IDS_GAMEUNHANDLED);
+								else
+								{
+									//pSaveData->NbGames = pSaveData->NbGames + 1;
+									//pSaveData->Games[pSaveData->NbGames] = 
+								}
+							}
+							delete psec;
+						}
 					}
+					return (INT_PTR)TRUE;
 				}
 				else
 					Error(IDS_INVALIDUSER);

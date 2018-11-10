@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "GameCtrl.h"
 #include <stdio.h>
+#include <userenv.h>
 
 
 //	Process startup info
@@ -154,6 +155,11 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 					options.doForce = TRUE;
 					pos = pos + 5;
 				}
+				else if (pos == strstr(pos, "run"))
+				{
+					options.doRun = TRUE;
+					pos = pos + 5;
+				}
 				else
 					res = FALSE;	// Unknown option
 			}
@@ -181,6 +187,10 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 						options.doForce = TRUE;
 						pos = pos + 2;
 						break;
+					case 'r':
+						options.doRun = TRUE;
+						pos = pos + 2;
+						break;
 					default:
 						res = FALSE;	// Unknown option
 						break;
@@ -199,40 +209,33 @@ BOOL runGame(const char *path)
 	if ((NULL == path) || (NULL == hWnd))
 		return FALSE;
 
-	char				gamePath[MAX_PATH];
-	char				gameArgs[MAX_PATH];
+	wchar_t	gamePath[MAX_PATH];
+	MultiByteToWideChar(CP_ACP, 0, path, -1, gamePath, MAX_PATH);
 
-	sprintf_s(gamePath, "%s", path);
-	sprintf_s(gameArgs, "%s", "");
-
-	memset(&si, 0, sizeof(STARTUPINFO));
+	STARTUPINFOW siw;
+	memset(&siw, 0, sizeof(STARTUPINFOW));
 	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
-	si.cb = sizeof(STARTUPINFO);
-	si.lpTitle = "Play Game";
+	siw.cb = sizeof(STARTUPINFO);
+	siw.lpDesktop = L""; // "winsta0\\default";
 
-	DWORD	creationFlag = CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE;
-
-	// creating work unit
-
-	if (0 == CreateProcess(	gamePath,		// pointer to name of executable module
-							gameArgs,		// pointer to command line string
-							NULL,			// process security attributes
-							NULL,			// thread security attributes
-							TRUE,			// handle inheritance flag
-							creationFlag,	// creation flags
-							NULL,			// pointer to new environment block
-							NULL,			// pointer to current directory name
-							&si,			// pointer to STARTUPINFO
-							&pi))			// pointer to PROCESS_INFORMATION
+	if (FALSE == CreateProcessWithLogonW(	L"GameCtrl",
+											L".",
+											L"GameCtrl",
+											0,
+											gamePath,
+											NULL,
+											CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE,
+											NULL, 
+											NULL,
+											&siw, &pi))
 	{
-		CheckError("Error launching game", ::GetLastError());
+		CheckError("Failed to launch game", ::GetLastError());
 		return FALSE;
 	}
-
-
-	// now the job starts
-	ResumeThread(pi.hThread);
-
+	else
+		// now the job starts
+		ResumeThread(pi.hThread);
+	
 	return TRUE;
 }
 
@@ -309,4 +312,43 @@ void adjustGameTime(GameCtrlData_st &data)
 }
 
 
+BOOL adjustMenu(GameCtrlData_st &data)
+{
+	if (NULL == hWnd)
+		return FALSE;
+	HMENU menu = GetMenu(hWnd);
+	if (NULL == menu)
+		return FALSE;
 
+	HMENU file = GetSubMenu(menu, 0);
+	if (NULL == file)
+		return FALSE;
+
+	MENUITEMINFO mi;
+	memset(&mi, 0, sizeof(MENUITEMINFO));
+	mi.cbSize = sizeof(MENUITEMINFO);
+	mi.fMask = MIIM_TYPE;
+	mi.fType = MFT_SEPARATOR;
+
+	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+		return FALSE;
+
+	HICON hh = ExtractIcon(0, data.Games[0], 0);
+	ICONINFO ii;
+	GetIconInfo(hh, &ii);
+
+	memset(&mi, 0, sizeof(MENUITEMINFO));
+	mi.cbSize = sizeof(MENUITEMINFO);
+	mi.fMask = MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS;
+	mi.fType = MFT_STRING;
+	const char *exe = strrchr(data.Games[0], '\\');
+	mi.dwTypeData = (LPSTR)(exe + 1);
+	mi.wID = 1024;
+	mi.hbmpChecked = ii.hbmColor;
+	mi.hbmpUnchecked = ii.hbmColor;
+
+	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+		return FALSE;
+
+	return TRUE;
+}

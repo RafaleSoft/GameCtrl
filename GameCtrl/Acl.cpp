@@ -23,14 +23,38 @@ BOOL IsUserAdmin(HANDLE token)
 	if (TRUE == b)
 	{
 		if (!CheckTokenMembership(token, AdministratorsGroup, &b))
-		{
 			b = FALSE;
-		}
 		FreeSid(AdministratorsGroup);
 	}
 
 	return(b);
 }
+
+BOOL IsGuest(HANDLE token)
+{
+	BOOL b = FALSE;
+
+	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+	PSID GuestsGroup;
+
+	b = AllocateAndInitializeSid(&NtAuthority,
+								 1,
+								 DOMAIN_GROUP_RID_GUESTS, //DOMAIN_USER_RID_GUEST,
+								 0,
+								 0, 0, 0, 0, 0, 0,
+								 &GuestsGroup);
+	if (TRUE == b)
+	{
+		if (!CheckTokenMembership(token, GuestsGroup, &b))
+		{
+			b = FALSE;
+		}
+		FreeSid(GuestsGroup);
+	}
+
+	return(b);
+}
+
 
 BOOL IsSIDAdmin(PSID psid)
 {
@@ -113,31 +137,6 @@ LPVOID RetrieveTokenInformationClass(HANDLE hToken, TOKEN_INFORMATION_CLASS Info
 	return pInfo;
 }
 
-
-BOOL IsGuest(HANDLE token)
-{
-	BOOL b = FALSE;
-
-	SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
-	PSID GuestsGroup;
-
-	b = AllocateAndInitializeSid(&NtAuthority,
-								 1,
-								 DOMAIN_GROUP_RID_GUESTS, //DOMAIN_USER_RID_GUEST,
-								 0,
-								 0, 0, 0, 0, 0, 0,
-								 &GuestsGroup);
-	if (TRUE == b)
-	{
-		if (!CheckTokenMembership(token, GuestsGroup, &b))
-		{
-			b = FALSE;
-		}
-		FreeSid(GuestsGroup);
-	}
-
-	return(b);
-}
 
 
 BOOL CreateUser(const char* UserName)
@@ -485,22 +484,69 @@ BOOL CheckSecurity(const char* file)
 
 
 
-BOOL SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec)
+BOOL SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec, PACL pNewAcl)
 {
 	if ((NULL == file) || (NULL == psec))
 		return NULL;
 
-	SECURITY_INFORMATION RequestedInformation = DACL_SECURITY_INFORMATION;
-	BOOL sec = SetFileSecurity(file, RequestedInformation, psec);
+	// Initialize a new security descriptor.
+	PSECURITY_DESCRIPTOR pNewSD = (PSECURITY_DESCRIPTOR)malloc(2048);
+	if (NULL == pNewSD)
+	{
+		CheckError("Impossible de créer un descripteur de sécurité", ::GetLastError());
+		return FALSE;
+	}
 
+	if (!InitializeSecurityDescriptor(pNewSD, SECURITY_DESCRIPTOR_REVISION))
+	{
+		CheckError("Impossible d'initialiser un descripteur de sécurité", ::GetLastError());
+		free(pNewSD);
+		return FALSE;
+	}
+
+	BOOL sec = FALSE;
+	SECURITY_DESCRIPTOR_CONTROL pControl;
+	DWORD dwRevision = 0;
+
+	GetSecurityDescriptorControl(psec, &pControl, &dwRevision);
+	if (SE_SELF_RELATIVE == (pControl & SE_SELF_RELATIVE))
+	{
+		PACL pDacl = (PACL)malloc(256);
+		DWORD dwDaclSize = 256;
+		PACL pSacl = (PACL)malloc(256);
+		DWORD dwSaclSize = 256;
+		PSID pOwner = (PSID)malloc(256);
+		DWORD dwOwnerSize = 256;
+		PSID pPrimaryGroup = (PSID)malloc(256);
+		DWORD dwPrimaryGroupSize = 256;
+
+		DWORD dwAbsoluteSecurityDescriptorSize = 2048;
+		sec = MakeAbsoluteSD(psec, pNewSD, &dwAbsoluteSecurityDescriptorSize,
+							 pDacl, &dwDaclSize,
+							 pSacl, &dwSaclSize,
+							 pOwner, &dwOwnerSize,
+							 pPrimaryGroup, &dwPrimaryGroupSize);
+
+		sec = IsValidSecurityDescriptor(pNewSD);
+	}
+
+	// Upadte DACL of the converted security descriptor.
+	sec = SetSecurityDescriptorDacl(pNewSD, TRUE, pNewAcl, FALSE);
 	if (FALSE == sec)
 		CheckError("Impossible d'installer le nouvel ACL", ::GetLastError());
+	else
+	{
+		sec = SetFileSecurity(file, DACL_SECURITY_INFORMATION, pNewSD);
+		if (FALSE == sec)
+			CheckError("Impossible d'installer le nouvel ACL", ::GetLastError());
+	}
 
+	free(pNewSD);
 	return sec;
 }
 
 
-PSECURITY_DESCRIPTOR SetSecurity(PSECURITY_DESCRIPTOR psec)
+PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 {
 	PACL dacl = NULL;
 	BOOL DaclPresent = FALSE;
@@ -575,28 +621,32 @@ PSECURITY_DESCRIPTOR SetSecurity(PSECURITY_DESCRIPTOR psec)
 				SID_NAME_USE use = SidTypeGroup;
 				if (FALSE == LookupAccountSid(NULL, account, Name, &bufferSize, DomainName, &bufferSize, &use))
 					Error(IDS_GROUPNOTFOUND);
-				else                                // FILE_GENERIC_EXECUTE =>
+				else if (use == SidTypeUser)        // FILE_GENERIC_EXECUTE =>
 				{									//		STANDARD_RIGHTS_EXECUTE + FILE_EXECUTE + FILE_READ_ATTRIBUTES + SYNCHRONIZE;
-					BOOL bAddAce = FALSE;
 					if (TRUE == IsSIDAdmin(account))
-						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+						;
 					else if (FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE))
 					{
 						if (0 != strcmp(Name, "GameCtrl"))
-							allowed->Mask = access & ~FILE_GENERIC_EXECUTE;
-						else
+							allowed->Mask = access & ~FILE_EXECUTE;
+						else	// Ensure GameCtrl will be able to execute the game
 						{
+							allowed->Mask = access | FILE_GENERIC_EXECUTE;
 							bGameCtrlFound = TRUE;
 						}
-						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
 					}
-					else
-						bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
-
-					if (FALSE == bAddAce)
-						CheckError("Ajout ACE impossible", ::GetLastError());
 				}
-				
+				else if ((use == SidTypeAlias) && (TRUE == IsWellKnownSid(account, WinBuiltinUsersSid)))
+					allowed->Mask = access & ~FILE_EXECUTE;
+				else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinAuthenticatedUserSid)))
+					allowed->Mask = access & ~FILE_EXECUTE;
+				else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinWorldSid)))
+					allowed->Mask = access & ~FILE_EXECUTE;
+
+				BOOL bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+				if (FALSE == bAddAce)
+					CheckError("Ajout ACE impossible", ::GetLastError());
+
 				break;
 			}
 			default:
@@ -619,55 +669,466 @@ PSECURITY_DESCRIPTOR SetSecurity(PSECURITY_DESCRIPTOR psec)
 		pNewAcl = FALSE;
 	}
 
-	// Initialize a security descriptor.
-	
-	PSECURITY_DESCRIPTOR pNewSD = (PSECURITY_DESCRIPTOR)malloc(2048);
-	if (NULL == pNewSD)
-		CheckError("Impossible de créer un descripteur de sécurité", ::GetLastError());
-
-	if (!InitializeSecurityDescriptor(pNewSD,SECURITY_DESCRIPTOR_REVISION))
-		CheckError("Impossible d'initialiser un descripteur de sécurité", ::GetLastError());
-	
-	
-
-	SECURITY_DESCRIPTOR_CONTROL pControl;
-	DWORD dwRevision = 0;
-	GetSecurityDescriptorControl(psec, &pControl, &dwRevision);
-	if (SE_SELF_RELATIVE == (pControl & SE_SELF_RELATIVE))
-	{
-		PACL pDacl = (PACL)malloc(256);
-		DWORD dwDaclSize = 256;
-		PACL pSacl = (PACL)malloc(256);
-		DWORD dwSaclSize = 256;
-		PSID pOwner = (PSID)malloc(256);
-		DWORD dwOwnerSize = 256;
-		PSID pPrimaryGroup = (PSID)malloc(256);
-		DWORD dwPrimaryGroupSize = 256;
-
-		DWORD dwAbsoluteSecurityDescriptorSize = 2048;
-		sec = MakeAbsoluteSD(psec,
-							 pNewSD,
-							 &dwAbsoluteSecurityDescriptorSize,
-							 pDacl,
-							 &dwDaclSize,
-							 pSacl,
-							 &dwSaclSize,
-							 pOwner,
-							 &dwOwnerSize,
-							 pPrimaryGroup,
-							 &dwPrimaryGroupSize);
-
-		sec = IsValidSecurityDescriptor(pNewSD);
-	}
-
-	// Upadte DACL of the converted security descriptor.
-	sec = SetSecurityDescriptorDacl(pNewSD, TRUE, pNewAcl, FALSE);
-	if (FALSE == sec)
-	{
-		CheckError("Impossible d'installer le nouvel ACL", ::GetLastError());
-		free(pNewSD);
-		pNewSD = NULL;
-	}
-
-	return pNewSD;
+	return pNewAcl;
 }
+
+
+#define DESKTOP_ALL (DESKTOP_READOBJECTS | DESKTOP_CREATEWINDOW | \
+		DESKTOP_CREATEMENU | DESKTOP_HOOKCONTROL | DESKTOP_JOURNALRECORD | \
+		DESKTOP_JOURNALPLAYBACK | DESKTOP_ENUMERATE | DESKTOP_WRITEOBJECTS | \
+		DESKTOP_SWITCHDESKTOP | STANDARD_RIGHTS_REQUIRED)
+
+#define WINSTA_ALL (WINSTA_ENUMDESKTOPS | WINSTA_READATTRIBUTES | \
+		WINSTA_ACCESSCLIPBOARD | WINSTA_CREATEDESKTOP | \
+		WINSTA_WRITEATTRIBUTES | WINSTA_ACCESSGLOBALATOMS | \
+		WINSTA_EXITWINDOWS | WINSTA_ENUMERATE | WINSTA_READSCREEN | \
+		STANDARD_RIGHTS_REQUIRED)
+
+#define GENERIC_ACCESS (GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE | GENERIC_ALL)
+
+
+BOOL AddAceToWindowStation(HWINSTA hwinsta, PSID psid)
+{
+	ACCESS_ALLOWED_ACE   *pace = NULL;
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	BOOL                 bDaclExist;
+	BOOL                 bDaclPresent;
+	BOOL                 bSuccess = FALSE;
+	DWORD                dwNewAclSize;
+	DWORD                dwSidSize = 0;
+	DWORD                dwSdSizeNeeded;
+	PACL                 pacl;
+	PACL                 pNewAcl = NULL;
+	PSECURITY_DESCRIPTOR psd = NULL;
+	PSECURITY_DESCRIPTOR psdNew = NULL;
+	PVOID                pTempAce;
+	SECURITY_INFORMATION si = DACL_SECURITY_INFORMATION;
+	unsigned int         i;
+	
+	__try
+	{
+		// Obtain the DACL for the window station.
+		if (!GetUserObjectSecurity(hwinsta,&si,psd,dwSidSize,&dwSdSizeNeeded))
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				psd = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
+				if (psd == NULL)
+					__leave;
+			
+				psdNew = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
+				if (psdNew == NULL)
+					__leave;
+
+				dwSidSize = dwSdSizeNeeded;
+
+				if (!GetUserObjectSecurity(hwinsta,&si,psd,dwSidSize,&dwSdSizeNeeded))
+					__leave;
+			}
+		else
+			__leave;
+
+		// Create a new DACL.
+		if (!InitializeSecurityDescriptor(psdNew, SECURITY_DESCRIPTOR_REVISION))
+			__leave;
+		// Get the DACL from the security descriptor.
+		if (!GetSecurityDescriptorDacl(psd, &bDaclPresent, &pacl, &bDaclExist))
+			__leave;
+
+		// Initialize the ACL.
+		ZeroMemory(&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION));
+		aclSizeInfo.AclBytesInUse = sizeof(ACL);
+		// Call only if the DACL is not NULL.
+		if (pacl != NULL)
+		{
+			// get the file ACL size info
+			if (!GetAclInformation(pacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation))
+				__leave;
+		}
+
+		// Compute the size of the new ACL.
+		dwNewAclSize = aclSizeInfo.AclBytesInUse + (2 * sizeof(ACCESS_ALLOWED_ACE)) + (2 * GetLengthSid(psid)) - (2 * sizeof(DWORD));
+		// Allocate memory for the new ACL.
+		pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
+		if (pNewAcl == NULL)
+			__leave;
+
+		// Initialize the new DACL.
+		if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
+			__leave;
+		// If DACL is present, copy it to a new DACL.
+		if (bDaclPresent)
+		{
+			// Copy the ACEs to the new ACL.
+			if (aclSizeInfo.AceCount)
+			{
+				for (i = 0; i < aclSizeInfo.AceCount; i++)
+				{
+					// Get an ACE.
+					if (!GetAce(pacl, i, &pTempAce))
+						__leave;
+					// Add the ACE to the new ACL.
+					if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, pTempAce, ((PACE_HEADER)pTempAce)->AceSize))
+						__leave;
+				}
+			}
+		}
+
+		// Add the first ACE to the window station.
+		pace = (ACCESS_ALLOWED_ACE *)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD));
+		if (pace == NULL)
+			__leave;
+		pace->Header.AceType = ACCESS_ALLOWED_ACE_TYPE;
+		pace->Header.AceFlags = CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE | OBJECT_INHERIT_ACE;
+		pace->Header.AceSize = LOWORD(sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD));
+		pace->Mask = GENERIC_ACCESS;
+
+		if (!CopySid(GetLengthSid(psid), &pace->SidStart, psid))
+			__leave;
+		if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, (LPVOID)pace, pace->Header.AceSize))
+			__leave;
+
+		// Add the second ACE to the window station.
+		pace->Header.AceFlags = NO_PROPAGATE_INHERIT_ACE;
+		pace->Mask = WINSTA_ALL;
+		if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, (LPVOID)pace, pace->Header.AceSize))
+			__leave;
+
+		// Set a new DACL for the security descriptor.
+		if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
+			__leave;
+		// Set the new security descriptor for the window station.
+		if (!SetUserObjectSecurity(hwinsta, &si, psdNew))
+			__leave;
+		// Indicate success.
+		bSuccess = TRUE;
+	}
+	__finally
+	{
+		// Free the allocated buffers.
+		if (pace != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)pace);
+		if (pNewAcl != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
+		if (psd != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)psd);
+		if (psdNew != NULL)
+		HeapFree(GetProcessHeap(), 0, (LPVOID)psdNew);
+	}
+	
+	return bSuccess;
+}
+
+
+BOOL AddAceToDesktop(HDESK hdesk, PSID psid)
+{
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	BOOL                 bDaclExist;
+	BOOL                 bDaclPresent;
+	BOOL                 bSuccess = FALSE;
+	DWORD                dwNewAclSize;
+	DWORD                dwSidSize = 0;
+	DWORD                dwSdSizeNeeded;
+	PACL                 pacl;
+	PACL                 pNewAcl = NULL;
+	PSECURITY_DESCRIPTOR psd = NULL;
+	PSECURITY_DESCRIPTOR psdNew = NULL;
+	PVOID                pTempAce;
+	SECURITY_INFORMATION si = DACL_SECURITY_INFORMATION;
+	unsigned int         i;
+	
+	__try
+	{
+		// Obtain the security descriptor for the desktop object.
+		if (!GetUserObjectSecurity(hdesk, &si, psd, dwSidSize, &dwSdSizeNeeded))
+		{
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				psd = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
+				if (psd == NULL)
+					__leave;
+
+				psdNew = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
+				if (psdNew == NULL)
+					__leave;
+
+				dwSidSize = dwSdSizeNeeded;
+				if (!GetUserObjectSecurity(hdesk, &si, psd, dwSidSize, &dwSdSizeNeeded))
+					__leave;
+			}
+			else
+				__leave;
+		}
+
+		// Create a new security descriptor.
+		if (!InitializeSecurityDescriptor(psdNew, SECURITY_DESCRIPTOR_REVISION))
+			__leave;
+		// Obtain the DACL from the security descriptor.
+		if (!GetSecurityDescriptorDacl(psd, &bDaclPresent, &pacl, &bDaclExist))
+			__leave;
+
+		// Initialize.
+		ZeroMemory(&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION));
+		aclSizeInfo.AclBytesInUse = sizeof(ACL);
+		// Call only if NULL DACL.
+		if (pacl != NULL)
+		{
+			// Determine the size of the ACL information.
+			if (!GetAclInformation(pacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation))
+				__leave;
+		}
+
+		// Compute the size of the new ACL.
+		dwNewAclSize = aclSizeInfo.AclBytesInUse + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+		// Allocate buffer for the new ACL.
+		pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
+		if (pNewAcl == NULL)
+			__leave;
+
+		// Initialize the new ACL.
+		if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
+			__leave;
+		// If DACL is present, copy it to a new DACL.
+		if (bDaclPresent)
+		{
+			// Copy the ACEs to the new ACL.
+			if (aclSizeInfo.AceCount)
+			{
+				for (i = 0; i < aclSizeInfo.AceCount; i++)
+				{
+					// Get an ACE.
+					if (!GetAce(pacl, i, &pTempAce))
+						__leave;
+					// Add the ACE to the new ACL.
+					if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, pTempAce, ((PACE_HEADER)pTempAce)->AceSize))
+						__leave;
+				}
+			}
+		}
+
+		// Add ACE to the DACL.
+		if (!AddAccessAllowedAce(pNewAcl, ACL_REVISION, DESKTOP_ALL, psid))
+			__leave;
+
+		// Set new DACL to the new security descriptor.
+		if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
+			__leave;
+
+		// Set the new security descriptor for the desktop object.
+		if (!SetUserObjectSecurity(hdesk, &si, psdNew))
+			__leave;
+
+		// Indicate success.
+		bSuccess = TRUE;
+	}
+	__finally
+	{
+		// Free buffers.
+		if (pNewAcl != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
+		if (psd != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)psd);
+		if (psdNew != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)psdNew);
+	}
+
+	return bSuccess;
+}
+
+BOOL ObtainSid(HANDLE hToken, PSID *psid)
+{
+	BOOL                    bSuccess = FALSE; // assume function will fail
+	DWORD                   dwIndex;
+	DWORD                   dwLength = 0;
+	TOKEN_INFORMATION_CLASS tic = TokenGroups;
+	PTOKEN_GROUPS           ptg = NULL;
+
+	__try
+	{
+		// 
+		// determine the size of the buffer
+		// 
+		if (!GetTokenInformation(hToken,tic,(LPVOID)ptg,0,&dwLength))
+		{
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				ptg = (PTOKEN_GROUPS)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,dwLength);
+				if (ptg == NULL)
+					__leave;
+			}
+			else
+				__leave;
+		}
+
+		// 
+		// obtain the groups the access token belongs to
+		// 
+		if (!GetTokenInformation(hToken,tic,(LPVOID)ptg,dwLength,&dwLength))
+			__leave;
+
+		// 
+		// determine which group is the logon sid
+		// 
+		for (dwIndex = 0; dwIndex < ptg->GroupCount; dwIndex++)
+		{
+			if ((ptg->Groups[dwIndex].Attributes & SE_GROUP_LOGON_ID) == SE_GROUP_LOGON_ID)
+			{
+				// 
+				// determine the length of the sid
+				// 
+				dwLength = GetLengthSid(ptg->Groups[dwIndex].Sid);
+
+				// 
+				// allocate a buffer for the logon sid
+				// 
+				*psid = (PSID)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,dwLength);
+				if (*psid == NULL)
+					__leave;
+
+				// 
+				// obtain a copy of the logon sid
+				// 
+				if (!CopySid(dwLength, *psid, ptg->Groups[dwIndex].Sid))
+					__leave;
+
+				// 
+				// break out of the loop because the logon sid has been
+				// found
+				// 
+				break;
+			}
+		}
+
+		// 
+		// indicate success
+		// 
+		bSuccess = TRUE;
+	}
+	__finally
+	{
+		// 
+		// free the buffer for the token group
+		// 
+		if (ptg != NULL)
+			HeapFree(GetProcessHeap(), 0, (LPVOID)ptg);
+	}
+
+	return bSuccess;
+
+}
+
+
+
+/*
+HANDLE token = NULL;
+BOOL logon = LogonUser("GameCtrl", NULL, "GameCtrl", LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &token);
+if (FALSE == logon)
+{
+CheckError("Error launching game with GameCtrl user", ::GetLastError());
+return FALSE;
+}
+*/
+/*
+logon = ImpersonateLoggedOnUser(token);
+if (FALSE == logon)
+{
+CheckError("Error launching game with GameCtrl user", ::GetLastError());
+CloseHandle(token);
+return FALSE;
+}
+*/
+// 
+// obtain a handle to the interactive windowstation
+// 
+/*
+HWINSTA hwinsta = OpenWindowStation("winsta0", FALSE, READ_CONTROL | WRITE_DAC);
+if (hwinsta == NULL)
+{
+CloseHandle(token);
+return FALSE;
+}
+HWINSTA hwinstaold = GetProcessWindowStation();
+
+
+if (!SetProcessWindowStation(hwinsta))
+{
+CloseHandle(token);
+return FALSE;
+}
+
+HDESK hdesk = OpenDesktop("default",0,FALSE,READ_CONTROL | WRITE_DAC | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS);
+if (hdesk == NULL)
+{
+CloseHandle(token);
+return FALSE;
+}
+
+PSID psid = NULL;
+if (!ObtainSid(token, &psid))
+{
+CloseHandle(token);
+return FALSE;
+}
+
+if (!AddAceToWindowStation(hwinsta, psid))
+{
+CloseHandle(token);
+return FALSE;
+}
+
+if (!AddAceToDesktop(hdesk, psid))
+{
+CloseHandle(token);
+return FALSE;
+}
+
+HeapFree(GetProcessHeap(), 0, (LPVOID)*&psid);
+CloseWindowStation(hwinsta);
+CloseDesktop(hdesk);
+
+
+SECURITY_ATTRIBUTES secAttr;
+secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+secAttr.lpSecurityDescriptor = GetFileDACL("F:\\VisualStudioProjects\\GameCtrl\\GameCtrl.exe");
+secAttr.bInheritHandle = FALSE;
+*/
+/*
+void *environment = NULL;
+if (!CreateEnvironmentBlock(&environment, token, TRUE))
+{
+CloseHandle(token);
+return false;
+}
+
+logon = ImpersonateLoggedOnUser(token);
+if (FALSE == logon)
+{
+CheckError("Error launching game with GameCtrl user", ::GetLastError());
+CloseHandle(token);
+return FALSE;
+}
+*/
+
+/*
+memset(&si, 0, sizeof(STARTUPINFO));
+si.cb = sizeof(STARTUPINFO);
+si.lpDesktop = "winsta0\\default";
+
+if (0 == CreateProcessAsUser(	token,
+NULL, //"F:\\VisualStudioProjects\\GameCtrl\\GameCtrl.exe",		// pointer to name of executable module
+"C:\\Windows\\System32\\cmd.exe", //gameArgs,		// pointer to command line string
+NULL, //&secAttr,			// process security attributes
+NULL, //&secAttr,			// thread security attributes
+FALSE,			// handle inheritance flag
+CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE,	// creation flags
+NULL,	// pointer to new environment block
+NULL,			// pointer to current directory name
+&si,			// pointer to STARTUPINFO
+&pi))			// pointer to PROCESS_INFORMATION
+{
+CheckError("Failed to launch game", ::GetLastError());
+return FALSE;
+}
+*/
+//SetProcessWindowStation(hwinstaold);
+//CloseHandle(token);
+//return RevertToSelf();
