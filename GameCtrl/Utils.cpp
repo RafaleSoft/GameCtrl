@@ -209,15 +209,31 @@ BOOL runGame(const char *path)
 	if ((NULL == path) || (NULL == hWnd))
 		return FALSE;
 
+	if ((0 != pi.hProcess) || (0 != pi.hThread))
+	{
+		DWORD exitCode = 0;
+		BOOL stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
+		if (FALSE == stillActive)
+		{
+			CheckError("Unable to collect game liveliness", GetLastError());
+			return FALSE;
+		}
+		else if (0 != exitCode)
+		{
+			Error(IDS_GAMERUNNING);
+			return FALSE;
+		}
+	}
+
 	wchar_t	gamePath[MAX_PATH];
 	MultiByteToWideChar(CP_ACP, 0, path, -1, gamePath, MAX_PATH);
 
 	STARTUPINFOW siw;
 	memset(&siw, 0, sizeof(STARTUPINFOW));
-	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
 	siw.cb = sizeof(STARTUPINFO);
-	siw.lpDesktop = L""; // "winsta0\\default";
+	siw.lpDesktop = L""; // "winsta0\\default"; Why this does not work even if I add ACEs to Desktop & Winsta ?
 
+	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
 	if (FALSE == CreateProcessWithLogonW(	L"GameCtrl",
 											L".",
 											L"GameCtrl",
@@ -248,20 +264,28 @@ BOOL stopGame(void)
 	if (0 == pi.hProcess)
 		return TRUE;
 
-	BOOL res = TerminateProcess(pi.hProcess, TRUE);
-	if (FALSE == res)
-		CheckError("Failed to terminate game", ::GetLastError());
-	else
+	BOOL res = TRUE;
+	DWORD exitCode = 0;
+	BOOL stillActive = GetExitCodeProcess(pi.hProcess,&exitCode);
+	if (FALSE == stillActive)
+		CheckError("Unable to collect game liveliness",GetLastError());
+	else if (0 != exitCode)
 	{
-		// Wait until game process exits.
-		WaitForSingleObject(pi.hProcess, INFINITE);
+		BOOL res = TerminateProcess(pi.hProcess, TRUE);
+		if (FALSE == res)
+			CheckError("Failed to terminate game", ::GetLastError());
+		else
+		{
+			// Wait until game process exits.
+			WaitForSingleObject(pi.hProcess, INFINITE);
 
-		CloseHandle(pi.hProcess);
-		if (0 != pi.hThread)
-			CloseHandle(pi.hThread);
-
-		memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+			CloseHandle(pi.hProcess);
+			if (0 != pi.hThread)
+				CloseHandle(pi.hThread);
+		}
 	}
+
+	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
 
 	return res;
 }
@@ -331,24 +355,68 @@ BOOL adjustMenu(GameCtrlData_st &data)
 	mi.fType = MFT_SEPARATOR;
 
 	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+	{
+		CheckError("Failed to terminate game", ::GetLastError());
 		return FALSE;
+	}
 
-	HICON hh = ExtractIcon(0, data.Games[0], 0);
-	ICONINFO ii;
-	GetIconInfo(hh, &ii);
+	BOOL res = TRUE;
+	for (int i = 0; i < data.NbGames; i++)
+	{
+		HICON hh = ExtractIcon(0, data.Games[i], 0);
+		ICONINFO ii;
+		GetIconInfo(hh, &ii);
 
-	memset(&mi, 0, sizeof(MENUITEMINFO));
-	mi.cbSize = sizeof(MENUITEMINFO);
-	mi.fMask = MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS;
-	mi.fType = MFT_STRING;
-	const char *exe = strrchr(data.Games[0], '\\');
-	mi.dwTypeData = (LPSTR)(exe + 1);
-	mi.wID = 1024;
-	mi.hbmpChecked = ii.hbmColor;
-	mi.hbmpUnchecked = ii.hbmColor;
+		memset(&mi, 0, sizeof(MENUITEMINFO));
+		mi.cbSize = sizeof(MENUITEMINFO);
+		mi.fMask = MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS;
+		mi.fType = MFT_STRING;
+		const char *exe = strrchr(data.Games[i], '\\');
+		mi.dwTypeData = (LPSTR)(exe + 1);
+		mi.wID = IDM_GAME1 + i;
 
-	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
-		return FALSE;
+		BITMAPINFO bi;
+		HDC hdc = GetDC(hWnd);
+		memset(&bi, 0, sizeof(BITMAPINFO));
+		bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		GetDIBits(hdc, ii.hbmColor, 0, 0, NULL, &bi, DIB_RGB_COLORS);
+		int size = bi.bmiHeader.biBitCount / 8;
+		int dim = bi.bmiHeader.biWidth * bi.bmiHeader.biHeight;
+		bi.bmiHeader.biCompression = BI_RGB;	// Extract RGB.
 
-	return TRUE;
+		unsigned char *bits = new unsigned char[dim*size];
+		memset(bits, 0, dim*size);
+		int nbread = GetDIBits(hdc, ii.hbmColor, 0, bi.bmiHeader.biHeight, bits, &bi, DIB_RGB_COLORS);
+
+		unsigned char *newbits = NULL;
+		HBITMAP newBitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, (void**)&newbits, NULL, 0);
+		for (int j = 0; j < bi.bmiHeader.biHeight; j++)
+			for (int i = 0; i < bi.bmiHeader.biWidth; i++)
+			{
+				int pos = 4 * (bi.bmiHeader.biWidth - i - 1 + bi.bmiHeader.biWidth*j);
+				int pos2 = 4 * (i + j*bi.bmiHeader.biWidth);
+
+				newbits[pos + 3] = bits[pos2 + 3];
+				newbits[pos + 2] = bits[pos2 + 2];
+				newbits[pos + 1] = bits[pos2 + 1];
+				newbits[pos] = bits[pos2];
+			}
+
+		DestroyIcon(hh);
+		if (ii.hbmColor != NULL)
+			DeleteObject(ii.hbmColor);
+		if (ii.hbmMask != NULL)
+			DeleteObject(ii.hbmMask);
+		delete[] bits;
+		mi.hbmpChecked = newBitmap; // ii.hbmColor;
+		mi.hbmpUnchecked = newBitmap; // ii.hbmColor;
+
+		if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+		{
+			CheckError("Failed to add game menu item", ::GetLastError());
+			res = FALSE;
+		}
+	}
+
+	return res;
 }

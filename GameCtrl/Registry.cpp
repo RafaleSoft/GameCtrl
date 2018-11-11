@@ -90,7 +90,6 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 
 		for (long i = 0; i < data.NbGames; i++)
 		{
-			const char* game = data.Games[i];
 			char buffer[32];
 			sprintf_s(buffer, 32, "GAME%d", i);
 			res = RegGetValue(hTestKey, NULL, TEXT(buffer), RRF_RT_REG_SZ, &pdwType, NULL, &pcbData);

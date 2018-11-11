@@ -178,11 +178,12 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			pSaveData = (GameCtrlData_st*)lParam;
 
-			HIMAGELIST imageList = ImageList_Create(32, 32, ILC_COLOR24, 16, 8);
+			HIMAGELIST imageList = ImageList_Create(32, 32, ILC_COLOR32 | ILC_MASK, 16, 8);
 			for (long i = 0; i < pSaveData->NbGames; i++)
 			{
 				HICON hh = ExtractIcon(0, pSaveData->Games[i], 0);
 				ImageList_AddIcon(imageList, hh);
+				DestroyIcon(hh);
 			}
 
 			HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
@@ -252,8 +253,22 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					open.lpstrFile = buffer;
 					open.nMaxFile = DEFAULT_BUFSIZE;
 
+					
 					// TODO: move to IFileOpenDialog
-					if (GetOpenFileName(&open) && (strlen(buffer) > 0))
+					if (FALSE == GetOpenFileName(&open))
+						return (INT_PTR)FALSE;
+
+					for (long i = 0; i < pSaveData->NbGames; i++)
+					{
+						if (!strcmp(pSaveData->Games[i], buffer))
+						{
+							Error(IDS_GAMEPREEXISTS);
+							return (INT_PTR)FALSE;
+						}
+					}
+
+					size_t buflen = strlen(buffer);
+					if (buflen > 0)
 					{
 						PSECURITY_DESCRIPTOR psec = GetFileDACL(buffer);
 						if (NULL != psec)
@@ -265,8 +280,17 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 									Error(IDS_GAMEUNHANDLED);
 								else
 								{
-									//pSaveData->NbGames = pSaveData->NbGames + 1;
-									//pSaveData->Games[pSaveData->NbGames] = 
+									const char **new_Games = new const char*[pSaveData->NbGames + 1];
+
+									for (long i = 0; i < pSaveData->NbGames; i++)
+										new_Games[i] = pSaveData->Games[i];
+
+									new_Games[pSaveData->NbGames] = new char[buflen + 1];
+									memcpy((char*)new_Games[pSaveData->NbGames], buffer, buflen + 1);
+
+									pSaveData->NbGames = pSaveData->NbGames + 1;
+									delete[] pSaveData->Games;
+									pSaveData->Games = new_Games;
 								}
 							}
 							delete psec;

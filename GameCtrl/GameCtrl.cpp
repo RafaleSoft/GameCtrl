@@ -59,9 +59,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case ID_CONFIG_GAMES:
 					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
 					break;
+				case ID_CONFIG_UNINSTALL:
+					break;
 				case IDM_EXIT:
 					// TODO : check game has been quit.
 					DestroyWindow(hWnd);
+					break;
+				case IDM_GAME1:
+				case IDM_GAME2:
+				case IDM_GAME3:
+				case IDM_GAME4:
+				case IDM_GAME5:
+				case IDM_GAME6:
+				case IDM_GAME7:
+				case IDM_GAME8:
+				case IDM_GAME9:
+				case IDM_GAME10:
+				case IDM_GAME11:
+				case IDM_GAME12:
+				case IDM_GAME13:
+				case IDM_GAME14:
+				case IDM_GAME15:
+				case IDM_GAME16:
+					runGame(data.Games[wmId - IDM_GAME1]);
 					break;
 				default:
 					return DefWindowProc(hWnd, message, wParam, lParam);
