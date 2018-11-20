@@ -197,8 +197,7 @@ BOOL CreateUser(const char* UserName)
 				MessageBox(NULL, buffer, "Info", MB_OK);
 			}
 
-			wchar_t gname[DEFAULT_BUFSIZE];
-			MultiByteToWideChar(CP_ACP, 0, GroupName, -1, gname, DEFAULT_BUFSIZE);
+			wchar_t *gname = toWchar(GroupName);
 			LOCALGROUP_MEMBERS_INFO_3 ginfo;
 			ginfo.lgrmi3_domainandname = uname;
 			status = NetLocalGroupAddMembers(NULL,	// LPCWSTR  ServerName, NULL is local
@@ -215,6 +214,7 @@ BOOL CreateUser(const char* UserName)
 				MessageBox(NULL, buffer, "Erreur inconnue", MB_OK);
 			}
 
+			delete[] gname;
 			break;
 		}
 		default:
@@ -230,9 +230,7 @@ BOOL CreateUser(const char* UserName)
 
 BOOL DeleteUser(const char* UserName)
 {
-	wchar_t uname[DEFAULT_BUFSIZE];
-	MultiByteToWideChar(CP_ACP, 0, UserName, -1, uname, DEFAULT_BUFSIZE);
-
+	wchar_t *uname = toWchar(UserName);
 	NET_API_STATUS status = NetUserDel(NULL, uname);
 
 	BOOL res = FALSE;
@@ -256,6 +254,7 @@ BOOL DeleteUser(const char* UserName)
 		}
 	}
 
+	delete[] uname;
 	return res;
 }
 
@@ -282,14 +281,15 @@ BOOL FindUser(const char* UserName)
 			break;
 		case NERR_Success:
 		{
-			wchar_t uname[DEFAULT_BUFSIZE];
-			MultiByteToWideChar(CP_ACP, 0, UserName, -1, uname, DEFAULT_BUFSIZE);
+			wchar_t *uname = toWchar(UserName);
 
 			NET_DISPLAY_USER *users = (NET_DISPLAY_USER *)SortedBuffer;
 			for (DWORD i = 0; (FALSE == res) && (i < ReturnedEntryCount); i++)
 				if (!wcscmp(users[i].usri1_name, uname))
 					res = TRUE;
 			break;
+
+			delete[] uname;
 		}
 		default:
 			MessageBox(NULL, "Erreur inconnue", "Erreur inconnue", MB_OK);
@@ -324,13 +324,13 @@ BOOL FindGroup(const char* GroupName)
 			break;
 		case NERR_Success:
 		{
-			wchar_t gname[DEFAULT_BUFSIZE];
-			MultiByteToWideChar(CP_ACP, 0, GroupName, -1, gname, DEFAULT_BUFSIZE);
+			wchar_t *gname = toWchar(GroupName);
 
 			NET_DISPLAY_GROUP *groups = (NET_DISPLAY_GROUP *)SortedBuffer;
 			for (DWORD i = 0; (FALSE == res) && (i < ReturnedEntryCount); i++)
 				if (!wcscmp(groups[i].grpi3_name, gname))
 					res = TRUE;
+			delete[] gname;
 			break;
 		}
 		default:
@@ -360,13 +360,22 @@ BOOL ExecuteAsAdmin(const char *file, const char *options)
 	shExInfo.nShow = SW_SHOW;
 	shExInfo.hInstApp = 0;
 
+	BOOL res = TRUE;
 	if (ShellExecuteEx(&shExInfo))
 	{
-		WaitForSingleObject(shExInfo.hProcess, INFINITE);
-		CloseHandle(shExInfo.hProcess);
+		if (0 != shExInfo.hProcess)
+		{
+			WaitForSingleObject(shExInfo.hProcess, INFINITE);
+			CloseHandle(shExInfo.hProcess);
+		}
+		else
+		{
+			CheckError("Unable to run GameCtrl as Administrator", GetLastError());
+			res = FALSE;
+		}
 	}
 
-	return TRUE;
+	return res;
 }
 
 
@@ -527,6 +536,7 @@ BOOL SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec, PACL pNewAcl)
 							 pOwner, &dwOwnerSize,
 							 pPrimaryGroup, &dwPrimaryGroupSize);
 
+#pragma warning(suppress: 6102)
 		sec = IsValidSecurityDescriptor(pNewSD);
 	}
 
@@ -623,9 +633,8 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 					Error(IDS_GROUPNOTFOUND);
 				else if (use == SidTypeUser)        // FILE_GENERIC_EXECUTE =>
 				{									//		STANDARD_RIGHTS_EXECUTE + FILE_EXECUTE + FILE_READ_ATTRIBUTES + SYNCHRONIZE;
-					if (TRUE == IsSIDAdmin(account))
-						;
-					else if (FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE))
+					if ((FALSE == IsSIDAdmin(account)) &&
+						(FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE)))
 					{
 						if (0 != strcmp(Name, "GameCtrl"))
 							allowed->Mask = access & ~FILE_EXECUTE;
@@ -665,6 +674,125 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 	if (FALSE == sec)
 	{
 		CheckError("ACL invalide", ::GetLastError());
+		delete[] aclBuffer;
+		pNewAcl = FALSE;
+	}
+
+	return pNewAcl;
+}
+
+
+PACL UnsetSecurity(PSECURITY_DESCRIPTOR psec)
+{
+	PACL dacl = NULL;
+	BOOL DaclPresent = FALSE;
+	BOOL DaclDefaulted = FALSE;
+	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
+	sec = GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation);
+	if (FALSE == sec)
+	{
+		CheckError("Impossible d'obtenir les informations sur ACL", ::GetLastError());
+		return NULL;
+	}
+
+	// Obtain the GameCtrlUser Sid
+	TCHAR sidbuffer[DEFAULT_BUFSIZE];
+	DWORD cbSid = DEFAULT_BUFSIZE;
+	TCHAR ReferencedDomainName[DEFAULT_BUFSIZE];
+	DWORD cchReferencedDomainName = DEFAULT_BUFSIZE;
+	SID_NAME_USE peUse;
+	if (FALSE == LookupAccountName(NULL, "GameCtrl", sidbuffer, &cbSid, ReferencedDomainName, &cchReferencedDomainName, &peUse))
+	{
+		CheckError("Compte de jeu non installé", ::GetLastError());
+		return NULL;
+	}
+	PSID psid = (PSID)sidbuffer;
+
+	// Compute the size of the new ACL (remove GameCtrl access)
+	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse +
+		sizeof(ACCESS_ALLOWED_ACE) - GetLengthSid(psid) + sizeof(DWORD);
+
+	// Allocate memory for the new ACL.
+	unsigned char *aclBuffer = new unsigned char[dwNewAclSize];
+	PACL pNewAcl = (PACL)aclBuffer;
+	if (pNewAcl == NULL)
+		return NULL;
+
+	// Initialize the new DACL.
+	if (!InitializeAcl(pNewAcl, dwNewAclSize, ACL_REVISION))
+	{
+		CheckError("Impossible d'initialiser le nouvel ACL", ::GetLastError());
+		delete[] aclBuffer;
+		return NULL;
+	}
+
+	sec = TRUE;
+	for (DWORD j = 0; (j < aclSizeInfo.AceCount) && (TRUE == sec); j++)
+	{
+		LPVOID ace;
+		sec = GetAce(dacl, j, &ace);
+		if (TRUE != sec)
+		{
+			CheckError("Impossible d'obtenir les ACL:", ::GetLastError());
+			continue;
+		}
+
+		ACE_HEADER *header = (ACE_HEADER*)ace;
+		switch (header->AceType)
+		{
+			case ACCESS_ALLOWED_ACE_TYPE:
+			{
+				ACCESS_ALLOWED_ACE *allowed = (ACCESS_ALLOWED_ACE*)ace;
+				DWORD sid = allowed->SidStart;
+				DWORD access = allowed->Mask;
+
+				PSID account = (PSID)&(allowed->SidStart);
+				TCHAR Name[DEFAULT_BUFSIZE];
+				TCHAR DomainName[DEFAULT_BUFSIZE];
+				DWORD bufferSize = DEFAULT_BUFSIZE;
+				SID_NAME_USE use = SidTypeGroup;
+				if (FALSE == LookupAccountSid(NULL, account, Name, &bufferSize, DomainName, &bufferSize, &use))
+					Error(IDS_GROUPNOTFOUND);
+				else if (use == SidTypeUser)        // FILE_GENERIC_EXECUTE =>
+				{									//		STANDARD_RIGHTS_EXECUTE + FILE_EXECUTE + FILE_READ_ATTRIBUTES + SYNCHRONIZE;
+					if ((FALSE == IsSIDAdmin(account)) &&
+						(FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE)))
+					{
+						if (0 != strcmp(Name, "GameCtrl"))
+							allowed->Mask = access & FILE_EXECUTE;
+						else	// Ensure GameCtrl will be able to execute the game
+						{
+							// Do nothing : GameCtrl is being removed.
+						}
+					}
+				}
+				else
+				{
+					if ((use == SidTypeAlias) && (TRUE == IsWellKnownSid(account, WinBuiltinUsersSid)))
+						allowed->Mask = access & FILE_EXECUTE;
+					else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinAuthenticatedUserSid)))
+						allowed->Mask = access & FILE_EXECUTE;
+					else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinWorldSid)))
+						allowed->Mask = access & FILE_EXECUTE;
+
+					BOOL bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
+					if (FALSE == bAddAce)
+						CheckError("Ajout ACE impossible:", ::GetLastError());
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	sec = IsValidAcl(pNewAcl);
+	if (FALSE == sec)
+	{
+		CheckError("ACL invalide:", ::GetLastError());
 		delete[] aclBuffer;
 		pNewAcl = FALSE;
 	}
@@ -793,12 +921,16 @@ BOOL AddAceToWindowStation(HWINSTA hwinsta, PSID psid)
 		if (!AddAce(pNewAcl, ACL_REVISION, MAXDWORD, (LPVOID)pace, pace->Header.AceSize))
 			__leave;
 
-		// Set a new DACL for the security descriptor.
-		if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
-			__leave;
-		// Set the new security descriptor for the window station.
-		if (!SetUserObjectSecurity(hwinsta, &si, psdNew))
-			__leave;
+		if (NULL != psdNew)
+		{
+			// Set a new DACL for the security descriptor.
+			if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
+				__leave;
+			// Set the new security descriptor for the window station.
+			if (!SetUserObjectSecurity(hwinsta, &si, psdNew))
+				__leave;
+		}
+
 		// Indicate success.
 		bSuccess = TRUE;
 	}
@@ -909,14 +1041,17 @@ BOOL AddAceToDesktop(HDESK hdesk, PSID psid)
 		if (!AddAccessAllowedAce(pNewAcl, ACL_REVISION, DESKTOP_ALL, psid))
 			__leave;
 
-		// Set new DACL to the new security descriptor.
-		if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
-			__leave;
+		if (NULL != psdNew)
+		{
+			// Set new DACL to the new security descriptor.
+			if (!SetSecurityDescriptorDacl(psdNew, TRUE, pNewAcl, FALSE))
+				__leave;
 
-		// Set the new security descriptor for the desktop object.
-		if (!SetUserObjectSecurity(hdesk, &si, psdNew))
-			__leave;
-
+			// Set the new security descriptor for the desktop object.
+			if (!SetUserObjectSecurity(hdesk, &si, psdNew))
+				__leave;
+		}
+		
 		// Indicate success.
 		bSuccess = TRUE;
 	}

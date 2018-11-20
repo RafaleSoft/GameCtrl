@@ -7,11 +7,11 @@
 struct GameCtrlData_st
 {
 	int				CHRONO;					// Durée en minutes de jeu
-	long			ReinitChrono;
-	long			NbDaysToReinit;			
+	long			ReinitChrono;			// Valeur de réinitialisation du compteur
+	long			NbDaysToReinit;			// Nb de jours avant réinitialisation
 	FILETIME		NextUpdateTime;			// Prochaine réinitialisation des compteurs
-	long			NbGames;
-	const char**	Games;
+	long			NbGames;				// Nombre de jeux installés
+	const char**	Games;					// Chemin vers les lanceurs de jeux.
 };
 
 struct GameCtrlOptions_st
@@ -30,6 +30,7 @@ struct GameCtrlOptions_st
 extern HWND hWnd;
 
 //	Utils interface
+wchar_t *toWchar(const char *text);
 void	Error(DWORD msg);
 void	Warning(DWORD msg);
 void	Info(DWORD msg);
@@ -37,7 +38,7 @@ void	CheckError(const char* msg, DWORD err);
 BOOL	CheckInstall(const GameCtrlData_st &data);
 BOOL	runGame(const char *path);
 BOOL	stopGame(void);
-void	adjustGameTime(GameCtrlData_st &data);
+BOOL	adjustGameTime(GameCtrlData_st &data);
 BOOL	adjustMenu(GameCtrlData_st &data);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
 BOOL	Install(BOOL force);
@@ -47,6 +48,7 @@ BOOL	UnInstall(BOOL force);
 BOOL	IsUserAdmin(HANDLE token);
 BOOL	CheckSecurity(const char* file);
 PACL	SetSecurity(PSECURITY_DESCRIPTOR psec);
+PACL	UnsetSecurity(PSECURITY_DESCRIPTOR psec);
 BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName);
 BOOL	DeleteUser(const char* UserName);
@@ -59,6 +61,8 @@ BOOL	AddAceToDesktop(HDESK hdesk, PSID psid);
 BOOL	ObtainSid(HANDLE hToken, PSID *psid);
 
 //	Registry helpers
+BOOL	CleanRegistry();
+BOOL	InitRegistry(GameCtrlData_st &data);
 BOOL	GetRegistryVars(GameCtrlData_st &data);
 BOOL	SetRegistryVars(const GameCtrlData_st &data);
 

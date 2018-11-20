@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "GameCtrl.h"
 #include <stdio.h>
+#include <CommCtrl.h>
 
 #define MAX_LOADSTRING 100
 
@@ -11,16 +12,21 @@
 HINSTANCE	hInst;								// current instance
 HWND		hWnd = NULL;
 
+static int SECONDS = 0;
 static const int CHRONO_DEFAULT = 140;
 static const int DAYS_DEFAULT = 7;
 UINT nIDEvent = 0;
 HFONT font = 0;
+HPEN pen_white = 0;
+HBRUSH	brush_white = 0;
+HBRUSH	brush_red = 0;
+HBRUSH current_brush = 0;
 
 GameCtrlData_st data = {	CHRONO_DEFAULT,
 							CHRONO_DEFAULT,
 							DAYS_DEFAULT,
 							{ 0, 0 },
-							1,
+							0,
 							NULL };
 GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
@@ -48,23 +54,61 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			switch (wmId)
 			{
 				case IDM_ABOUT:
+				{
 					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 					break;
+				}
 				case ID_CONFIG_TIMELIMITER:
+				{
 					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
 						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
 					else
 						Error(IDS_INVALIDUSER);
 					break;
+				}
 				case ID_CONFIG_GAMES:
+				{
 					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
 					break;
+				}
 				case ID_CONFIG_UNINSTALL:
+				{
+					HINSTANCE hInstance = GetModuleHandle(NULL);
+					TCHAR		szMessage[DEFAULT_BUFSIZE];
+					LoadString(hInstance, IDS_CONFIRMREMOVE, szMessage, DEFAULT_BUFSIZE);
+					
+					int yesno = MessageBox(hWnd, szMessage, "Désinstallation GameCtrl", MB_ICONASTERISK | MB_YESNO);
+					if (IDYES == yesno)
+					{
+						CleanRegistry();
+
+						for (long i = 0; i < data.NbGames; i++)
+						{
+							PSECURITY_DESCRIPTOR psec = GetFileDACL(data.Games[i]);
+							if (NULL != psec)
+							{
+								PACL newDacl = UnsetSecurity(psec);
+								if (NULL != newDacl)
+								{
+									if (FALSE == SetFileDACL(data.Games[i], psec, newDacl))
+										Error(IDS_GAMEUNHANDLED);
+								}
+							}
+						}
+
+						char buffer[MAX_LOADSTRING];
+						GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+						ExecuteAsAdmin(buffer, "--uninstall");
+					}
+
 					break;
+				}
 				case IDM_EXIT:
+				{
 					// TODO : check game has been quit.
 					DestroyWindow(hWnd);
 					break;
+				}
 				case IDM_GAME1:
 				case IDM_GAME2:
 				case IDM_GAME3:
@@ -81,8 +125,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case IDM_GAME14:
 				case IDM_GAME15:
 				case IDM_GAME16:
+				{
 					runGame(data.Games[wmId - IDM_GAME1]);
 					break;
+				}
 				default:
 					return DefWindowProc(hWnd, message, wParam, lParam);
 			}
@@ -90,24 +136,57 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_TIMER:
 		{
-			data.CHRONO = data.CHRONO - 1;
+			// blink color for the last minute of gaming.
+			if (1 == data.CHRONO)
+			{
+				if (brush_red == current_brush)
+					current_brush = brush_white;
+				else
+					current_brush = brush_red;
+			}
+
+			SECONDS = SECONDS + 1;
+			if (SECONDS > 59)
+			{
+				SECONDS = 0;
+				data.CHRONO = data.CHRONO - 1;
+			}
 			//	Terminate current game if any when timer reaches 0
 			if (0 == data.CHRONO)
 				stopGame();
-			::InvalidateRect(hWnd, NULL, TRUE);
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
+		}
+		case WM_ERASEBKGND:
+		{
+			HDC hdc = (HDC)wParam;
+			SelectObject(hdc, pen_white);
+			SelectObject(hdc, current_brush);
+
+			RECT rect;
+			GetClientRect(hWnd, &rect);
+			Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+
 			break;
 		}
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
 			HDC hdc = BeginPaint(hWnd, &ps);
+			
+			SelectObject(hdc, font);
 
-			::SelectObject(hdc, font);
 			int hour = data.CHRONO / 60;
 			int min = data.CHRONO - (hour * 60);
 			char text[8];
 			sprintf_s(text, "%02d:%02d", hour, min);
-			::TextOut(hdc, 10, 10, text, 5);
+			
+			if (current_brush == brush_red)
+				SetTextColor(hdc, RGB(255, 255, 255));
+			else
+				SetTextColor(hdc, RGB(0, 0, 0));
+			SetBkMode(hdc, TRANSPARENT);
+			TextOut(hdc, 10, 10, text, 5);
 
 			EndPaint(hWnd, &ps);
 			break;
@@ -182,28 +261,30 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	if (!hWnd)
 	{
-		CheckError("Unable to create window", ::GetLastError());
+		CheckError("Impossible de créer la fenêtre principale de l'application:", ::GetLastError());
 		return FALSE;
 	}
 
+	//!	Collect application data from registry and compute next deadline.
 	if (!GetRegistryVars(data))
 		return FALSE;
-	else
-		adjustGameTime(data);
-
-	if (FALSE == adjustMenu(data))
-	{
-		CheckError("Unable to create window menu", ::GetLastError());
+	else if (FALSE == adjustGameTime(data))
 		return FALSE;
-	}
 
+	//!	Add Game icons to application menu.
+	if (FALSE == adjustMenu(data))
+		return FALSE;
+
+	//!	If game is not properly installed, do the necessary actions below.
 	if (FALSE == CheckInstall(data))
 	{
 		Error(IDS_NOTINSTALLED);
 
 		char buffer[MAX_LOADSTRING];
 		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
-
+		
+		InitRegistry(data);
+		
 		ExecuteAsAdmin(buffer, "--install");
 
 		return FALSE;
@@ -216,13 +297,18 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 	
-	font = ::CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
-	::ShowCursor(TRUE);
+	pen_white = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+	brush_white = CreateSolidBrush(RGB(255, 255, 255));
+	brush_red = CreateSolidBrush(RGB(255, 0, 0));
+	current_brush = brush_white;
+
+	font = CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
+	ShowCursor(TRUE);
 
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
 
-	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000 * 60, NULL))
+	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000, NULL))
 	{
 		CheckError("Error creating timer", ::GetLastError());
 		return FALSE;
@@ -244,7 +330,10 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	InitCommonControls();
+	INITCOMMONCONTROLSEX init;
+	init.dwSize = sizeof(INITCOMMONCONTROLSEX);
+	init.dwICC = ICC_STANDARD_CLASSES | ICC_LISTVIEW_CLASSES | ICC_LINK_CLASS;
+	InitCommonControlsEx(&init);
 	
 	if (FALSE == ParseCmdLine(lpCmdLine, options))
 	{
@@ -298,6 +387,11 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	// Wait until game process exits if any.
 	stopGame();
+
+	DeleteObject(pen_white);
+	DeleteObject(brush_white);
+	DeleteObject(brush_red);
+	DeleteObject(font);
 
 	return (int)msg.wParam;
 }

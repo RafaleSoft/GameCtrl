@@ -14,6 +14,23 @@ static const char *ERREUR_STR = "Erreur";
 static const char *WARNING_STR = "Attention";
 static const char *INFO_STR = "Information";
 
+
+wchar_t *toWchar(const char *text)
+{
+	if (NULL == text)
+		return NULL;
+
+	wchar_t *buffer = new wchar_t[strlen(text)+1];
+	if (0 == MultiByteToWideChar(CP_ACP, 0, text, -1, buffer, strlen(text) + 1))
+	{
+		CheckError("Internal error: bad string translation", GetLastError());
+		delete[] buffer;
+		buffer = NULL;
+	}
+
+	return buffer;
+}
+
 void Error(DWORD msg)
 {
 	HINSTANCE hInstance = GetModuleHandle(NULL);
@@ -53,11 +70,27 @@ void CheckError(const char* msg, DWORD err)
 					  NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
 					  (LPTSTR)&lpMsgBuf, 0, NULL);
 
-		const char *msg = (NULL != lpMsgBuf) ? (const char*)lpMsgBuf : "Unknown Win32 error.";
-		MessageBox(hWnd, (LPTSTR)lpMsgBuf, ERREUR_STR, MB_OK | MB_ICONERROR);
+		size_t len = strlen("Error inconnue.") + 1;
+		if (NULL != msg)
+			len = len + strlen(msg) + 1 + 2;	// NULL char + 2 x newline
+		if (NULL != lpMsgBuf)
+			len = len + strlen((LPTSTR)lpMsgBuf) + 1 + 1;	// NULL char + newline
+
+		char *buffer = new char[len];
+		memset(buffer, 0, len);
+		if (NULL != msg)
+			strcpy_s(buffer, len, msg);
+		strcat_s(buffer, len, "\n\n");
+		if (NULL != lpMsgBuf)
+			strcat_s(buffer, len, (LPTSTR)lpMsgBuf);
+		else
+			strcat_s(buffer, len, "Error inconnue.");
+		
+		MessageBox(hWnd, buffer, ERREUR_STR, MB_OK | MB_ICONERROR);
 
 		if (NULL != lpMsgBuf)
 			LocalFree(lpMsgBuf);
+		delete[] buffer;
 		SetLastError(0);
 	}
 }
@@ -212,6 +245,7 @@ BOOL runGame(const char *path)
 	if ((0 != pi.hProcess) || (0 != pi.hThread))
 	{
 		DWORD exitCode = 0;
+#pragma warning(suppress: 6387)
 		BOOL stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
 		if (FALSE == stillActive)
 		{
@@ -225,9 +259,7 @@ BOOL runGame(const char *path)
 		}
 	}
 
-	wchar_t	gamePath[MAX_PATH];
-	MultiByteToWideChar(CP_ACP, 0, path, -1, gamePath, MAX_PATH);
-
+	wchar_t	*gamePath = toWchar(path);
 	STARTUPINFOW siw;
 	memset(&siw, 0, sizeof(STARTUPINFOW));
 	siw.cb = sizeof(STARTUPINFO);
@@ -252,6 +284,7 @@ BOOL runGame(const char *path)
 		// now the job starts
 		ResumeThread(pi.hThread);
 	
+	delete[] gamePath;
 	return TRUE;
 }
 
@@ -291,12 +324,16 @@ BOOL stopGame(void)
 }
 
 
-void adjustGameTime(GameCtrlData_st &data)
+BOOL adjustGameTime(GameCtrlData_st &data)
 {
 	SYSTEMTIME SystemTime;
 	GetSystemTime(&SystemTime);
-	FILETIME currentTime;
-	SystemTimeToFileTime(&SystemTime, &currentTime);
+	FILETIME currentTime = { 0, 0 };
+	if (FALSE == SystemTimeToFileTime(&SystemTime, &currentTime))
+	{
+		CheckError("Impossible d'obtenir la date courante:", ::GetLastError());
+		return FALSE;
+	}
 
 	if ((data.NextUpdateTime.dwHighDateTime == 0) &&
 		(data.NextUpdateTime.dwLowDateTime == 0))
@@ -309,7 +346,11 @@ void adjustGameTime(GameCtrlData_st &data)
 		SystemTime.wSecond = 0;
 		SystemTime.wMilliseconds = 0;
 		SystemTime.wDayOfWeek = 1;
-		SystemTimeToFileTime(&SystemTime, &data.NextUpdateTime);
+		if (FALSE == SystemTimeToFileTime(&SystemTime, &data.NextUpdateTime))
+		{
+			CheckError("Impossible d'obtenir la date courante:", ::GetLastError());
+			return FALSE;
+		}
 	}
 
 	LONG cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
@@ -333,6 +374,8 @@ void adjustGameTime(GameCtrlData_st &data)
 
 		cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
 	}
+
+	return TRUE;
 }
 
 
@@ -356,7 +399,7 @@ BOOL adjustMenu(GameCtrlData_st &data)
 
 	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
 	{
-		CheckError("Failed to terminate game", ::GetLastError());
+		CheckError("Impossible d'ajouter une entrée au menu de l'application:", ::GetLastError());
 		return FALSE;
 	}
 
@@ -390,17 +433,25 @@ BOOL adjustMenu(GameCtrlData_st &data)
 
 		unsigned char *newbits = NULL;
 		HBITMAP newBitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, (void**)&newbits, NULL, 0);
-		for (int j = 0; j < bi.bmiHeader.biHeight; j++)
-			for (int i = 0; i < bi.bmiHeader.biWidth; i++)
-			{
-				int pos = 4 * (bi.bmiHeader.biWidth - i - 1 + bi.bmiHeader.biWidth*j);
-				int pos2 = 4 * (i + j*bi.bmiHeader.biWidth);
+		if ((NULL == newBitmap) || (newbits == NULL))
+		{
+			CheckError("Impossible d'obtenir le bitmap de l'icône du jeu:", ::GetLastError());
+			return FALSE;
+		}
+		else
+		{
+			for (int j = 0; j < bi.bmiHeader.biHeight; j++)
+				for (int i = 0; i < bi.bmiHeader.biWidth; i++)
+				{
+					int pos = 4 * (bi.bmiHeader.biWidth - i - 1 + bi.bmiHeader.biWidth*j);
+					int pos2 = 4 * (i + j*bi.bmiHeader.biWidth);
 
-				newbits[pos + 3] = bits[pos2 + 3];
-				newbits[pos + 2] = bits[pos2 + 2];
-				newbits[pos + 1] = bits[pos2 + 1];
-				newbits[pos] = bits[pos2];
-			}
+					newbits[pos + 3] = bits[pos2 + 3];
+					newbits[pos + 2] = bits[pos2 + 2];
+					newbits[pos + 1] = bits[pos2 + 1];
+					newbits[pos] = bits[pos2];
+				}
+		}
 
 		DestroyIcon(hh);
 		if (ii.hbmColor != NULL)
@@ -413,7 +464,7 @@ BOOL adjustMenu(GameCtrlData_st &data)
 
 		if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
 		{
-			CheckError("Failed to add game menu item", ::GetLastError());
+			CheckError("Impossible d'ajouter une entrée de menu.", ::GetLastError());
 			res = FALSE;
 		}
 	}
