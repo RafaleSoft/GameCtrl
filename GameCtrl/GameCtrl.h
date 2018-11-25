@@ -71,3 +71,9 @@ INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Config(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Games(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Password(HWND, UINT, WPARAM, LPARAM);
+
+// CryptoAPI helpers
+BOOL initEncryption();
+unsigned char* encrypt(const unsigned char* data, DWORD &dataSize);
+unsigned char* decrypt(const unsigned char* data, DWORD &dataSize);
+BOOL closeEncryption();

@@ -271,6 +271,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	else if (FALSE == adjustGameTime(data))
 		return FALSE;
 
+	//DWORD dataSize = 16;
+	//initEncryption();
+	//unsigned char* cypher = encrypt((unsigned char*)"Test chiffrement", dataSize);
+	//unsigned char* text = decrypt(cypher, dataSize);
+	//closeEncryption();
+
 	//!	Add Game icons to application menu.
 	if (FALSE == adjustMenu(data))
 		return FALSE;
