@@ -21,7 +21,7 @@ struct GameCtrlOptions_st
 	BOOL doUsage;
 	BOOL doVersion;
 	BOOL doForce;
-	BOOL doRun;
+	BOOL doReset;
 };
 
 #define DEFAULT_BUFSIZE 256
@@ -35,14 +35,13 @@ void	Error(DWORD msg);
 void	Warning(DWORD msg);
 void	Info(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
-BOOL	CheckInstall(const GameCtrlData_st &data);
+BOOL	CheckInstall(GameCtrlData_st &data);
 BOOL	runGame(const char *path);
 BOOL	stopGame(void);
-BOOL	adjustGameTime(GameCtrlData_st &data);
-BOOL	adjustMenu(GameCtrlData_st &data);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
 BOOL	Install(BOOL force);
 BOOL	UnInstall(BOOL force);
+BOOL	Reset(void);
 
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);

@@ -33,7 +33,7 @@ wchar_t *toWchar(const char *text)
 
 void Error(DWORD msg)
 {
-	HINSTANCE hInstance = GetModuleHandle(NULL);
+	HINSTANCE	hInstance = GetModuleHandle(NULL);
 	TCHAR		szMessage[DEFAULT_BUFSIZE];
 
 	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
@@ -42,7 +42,7 @@ void Error(DWORD msg)
 
 void Warning(DWORD msg)
 {
-	HINSTANCE hInstance = GetModuleHandle(NULL);
+	HINSTANCE	hInstance = GetModuleHandle(NULL);
 	TCHAR		szMessage[DEFAULT_BUFSIZE];
 
 	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
@@ -51,7 +51,7 @@ void Warning(DWORD msg)
 
 void Info(DWORD msg)
 {
-	HINSTANCE hInstance = GetModuleHandle(NULL);
+	HINSTANCE	hInstance = GetModuleHandle(NULL);
 	TCHAR		szMessage[DEFAULT_BUFSIZE];
 
 	LoadString(hInstance, msg, szMessage, DEFAULT_BUFSIZE);
@@ -95,17 +95,24 @@ void CheckError(const char* msg, DWORD err)
 	}
 }
 
-BOOL CheckInstall(const GameCtrlData_st &data)
+BOOL Reset(void)
 {
-	BOOL res = FindUser("GameCtrl");
+	char buffer[DEFAULT_BUFSIZE];
+	GetModuleFileName(NULL, buffer, DEFAULT_BUFSIZE);
+	
+	FILE* bin = NULL;
+	errno_t err = fopen_s(&bin, buffer, "r+b");
+	sprintf_s(buffer, "Reset result: %d", err);
+	MessageBox(NULL, buffer, "Reset", MB_OK);
 
-	if (TRUE == res)
-		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
-			res = res & CheckSecurity(data.Games[i]);
+	int nb = fwrite("MZ", 2, 1, bin);
+	fclose(bin);
 
-	return res;
+	sprintf_s(buffer, "Reset result2: %d", nb);
+	MessageBox(NULL, buffer, "Reset", MB_OK);
+
+	return TRUE;
 }
-
 
 BOOL Install(BOOL force)
 {
@@ -188,9 +195,9 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 					options.doForce = TRUE;
 					pos = pos + 5;
 				}
-				else if (pos == strstr(pos, "run"))
+				else if (pos == strstr(pos, "reset"))
 				{
-					options.doRun = TRUE;
+					options.doReset = TRUE;
 					pos = pos + 5;
 				}
 				else
@@ -221,7 +228,7 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 						pos = pos + 2;
 						break;
 					case 'r':
-						options.doRun = TRUE;
+						options.doReset = TRUE;
 						pos = pos + 2;
 						break;
 					default:
@@ -249,7 +256,7 @@ BOOL runGame(const char *path)
 		BOOL stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
 		if (FALSE == stillActive)
 		{
-			CheckError("Unable to collect game liveliness", GetLastError());
+			CheckError("Impossible de récupérer le statut d'un jeu en cours", GetLastError());
 			return FALSE;
 		}
 		else if (0 != exitCode)
@@ -277,7 +284,7 @@ BOOL runGame(const char *path)
 											NULL,
 											&siw, &pi))
 	{
-		CheckError("Failed to launch game", ::GetLastError());
+		CheckError("Impossible de lancer le jeu", ::GetLastError());
 		return FALSE;
 	}
 	else
@@ -302,7 +309,7 @@ BOOL stopGame(void)
 	BOOL stillActive = GetExitCodeProcess(pi.hProcess,&exitCode);
 	if (FALSE == stillActive)
 		CheckError("Unable to collect game liveliness",GetLastError());
-	else if (0 != exitCode)
+	else if (STILL_ACTIVE == exitCode)
 	{
 		BOOL res = TerminateProcess(pi.hProcess, TRUE);
 		if (FALSE == res)
@@ -379,7 +386,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 }
 
 
-BOOL adjustMenu(GameCtrlData_st &data)
+BOOL adjustMenu(const GameCtrlData_st &data)
 {
 	if (NULL == hWnd)
 		return FALSE;
@@ -468,6 +475,24 @@ BOOL adjustMenu(GameCtrlData_st &data)
 			res = FALSE;
 		}
 	}
+
+	return res;
+}
+
+BOOL CheckInstall(GameCtrlData_st &data)
+{
+	if (!GetRegistryVars(data))
+		return FALSE;
+	else if (FALSE == adjustGameTime(data))
+		return FALSE;
+	else if (FALSE == adjustMenu(data))
+		return FALSE;
+
+	BOOL res = FindUser("GameCtrl");
+
+	if (TRUE == res)
+		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
+			res = res & CheckSecurity(data.Games[i]);
 
 	return res;
 }

@@ -99,6 +99,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						char buffer[MAX_LOADSTRING];
 						GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
 						ExecuteAsAdmin(buffer, "--uninstall");
+
+						exit(-1);
 					}
 
 					break;
@@ -264,12 +266,42 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		CheckError("Impossible de créer la fenêtre principale de l'application:", ::GetLastError());
 		return FALSE;
 	}
+	else
+	{
+		HICON admin = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_AUTHENTICATION));
+		ICONINFO ii;
+		GetIconInfo(admin, &ii);
+		HBITMAP hBitmapUnchecked = ii.hbmColor;
+		HBITMAP hBitmapChecked = ii.hbmColor;
 
-	//!	Collect application data from registry and compute next deadline.
-	if (!GetRegistryVars(data))
-		return FALSE;
-	else if (FALSE == adjustGameTime(data))
-		return FALSE;
+		HMENU menu = GetMenu(hWnd);
+		if (NULL == menu)
+			return FALSE;
+
+		HMENU config = GetSubMenu(menu, 1);
+		if (NULL == config)
+			return FALSE;
+
+		if (FALSE == SetMenuItemBitmaps(config, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
+			return FALSE;
+
+		HICON help = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_HELP));
+		GetIconInfo(help, &ii);
+		hBitmapUnchecked = ii.hbmColor;
+		hBitmapChecked = ii.hbmColor;
+
+		menu = GetMenu(hWnd);
+		if (NULL == menu)
+			return FALSE;
+
+		HMENU about = GetSubMenu(menu, 2);
+		if (NULL == about)
+			return FALSE;
+
+		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
+			return FALSE;
+	}
+
 
 	//DWORD dataSize = 16;
 	//initEncryption();
@@ -277,23 +309,23 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	//unsigned char* text = decrypt(cypher, dataSize);
 	//closeEncryption();
 
-	//!	Add Game icons to application menu.
-	if (FALSE == adjustMenu(data))
-		return FALSE;
-
+	//!	Collect application data from registry and compute next deadline.
 	//!	If game is not properly installed, do the necessary actions below.
 	if (FALSE == CheckInstall(data))
 	{
-		Error(IDS_NOTINSTALLED);
-
-		char buffer[MAX_LOADSTRING];
-		GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+		TCHAR		szMessage[DEFAULT_BUFSIZE];
+		LoadString(hInstance, IDS_NOTINSTALLED, szMessage, DEFAULT_BUFSIZE);
 		
-		InitRegistry(data);
-		
-		ExecuteAsAdmin(buffer, "--install");
-
-		return FALSE;
+		int yesno = MessageBox(hWnd, szMessage, "Installation de GameCtrl", MB_ICONASTERISK | MB_YESNO);
+		if (IDYES == yesno)
+		{
+			char buffer[MAX_LOADSTRING];
+			GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+			if (TRUE == InitRegistry(data))
+				ExecuteAsAdmin(buffer, "--install");
+		}
+		else
+			return FALSE;
 	}
 
 	
@@ -358,6 +390,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 		else if (options.doUsage)
 			Info(IDS_USAGE);
+		else if (options.doReset)
+			Reset();
 		else	// No options : normal launch
 			normalLaunch = TRUE;
 
@@ -389,6 +423,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
 
+	//!	Save application data to registry.
 	SetRegistryVars(data);
 
 	// Wait until game process exits if any.

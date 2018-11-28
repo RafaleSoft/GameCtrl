@@ -61,10 +61,10 @@ BOOL InitRegistry(GameCtrlData_st &data)
 	else
 	{
 		CheckError("Unable to access GameCtrl data", res);
-		return FALSE;
+		res = FALSE;
 	}
 
-	return TRUE;
+	return res;
 }
 
 BOOL WriteDWORD(HKEY hKey, const char* name, DWORD pvData)
@@ -148,7 +148,7 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 			}
 			else
 			{
-				CheckError("Unable to read game name", res);
+				CheckError("Impossible de lire le nom du jeu dans les données de GameCtrl", res);
 				RegCloseKey(hTestKey);
 				return FALSE;
 			}
@@ -159,7 +159,7 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 	}
 	else
 	{
-		CheckError("Unable to get GameCtrl data", res);
+		CheckError("Impossible d'accéder aux données de GameCtrl", res);
 		return FALSE;
 	}
 }
@@ -198,7 +198,7 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 			res = RegSetValueEx(hTestKey, TEXT(buffer), 0, REG_SZ, (BYTE*)game, strlen(game)+1);
 			if (ERROR_SUCCESS != res)
 			{
-				CheckError("Unable to write game name", res);
+				CheckError("Impossible d'enregistrer le nom du jeu dans les données de GameCtrl", res);
 				RegCloseKey(hTestKey);
 				return FALSE;
 			}
@@ -209,7 +209,7 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 	}
 	else
 	{
-		CheckError("Unable to write GameCtrl data", res);
+		CheckError("Impossible de sauvegarder les données de GameCtrl", res);
 		return FALSE;
 	}
 }

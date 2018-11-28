@@ -152,7 +152,7 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 				char buffer[32] = "";
 				GetWindowText(GetDlgItem(hDlg,IDC_EDIT_MINUTES), buffer, 32);
-				pSaveData->ReinitChrono = atoi(buffer);
+				pSaveData->CHRONO = pSaveData->ReinitChrono = atoi(buffer);
 
 				EndDialog(hDlg, LOWORD(wParam));
 				res = (INT_PTR)TRUE;

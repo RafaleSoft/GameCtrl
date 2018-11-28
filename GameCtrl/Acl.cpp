@@ -712,7 +712,7 @@ PACL UnsetSecurity(PSECURITY_DESCRIPTOR psec)
 	PSID psid = (PSID)sidbuffer;
 
 	// Compute the size of the new ACL (remove GameCtrl access)
-	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse +
+	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse -
 		sizeof(ACCESS_ALLOWED_ACE) - GetLengthSid(psid) + sizeof(DWORD);
 
 	// Allocate memory for the new ACL.
@@ -772,11 +772,11 @@ PACL UnsetSecurity(PSECURITY_DESCRIPTOR psec)
 				else
 				{
 					if ((use == SidTypeAlias) && (TRUE == IsWellKnownSid(account, WinBuiltinUsersSid)))
-						allowed->Mask = access & FILE_EXECUTE;
+						allowed->Mask = access | FILE_EXECUTE;
 					else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinAuthenticatedUserSid)))
-						allowed->Mask = access & FILE_EXECUTE;
+						allowed->Mask = access | FILE_EXECUTE;
 					else if ((use == SidTypeWellKnownGroup) && (TRUE == IsWellKnownSid(account, WinWorldSid)))
-						allowed->Mask = access & FILE_EXECUTE;
+						allowed->Mask = access | FILE_EXECUTE;
 
 					BOOL bAddAce = AddAce(pNewAcl, ACL_REVISION, MAXDWORD, ace, header->AceSize);
 					if (FALSE == bAddAce)

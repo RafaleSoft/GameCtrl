@@ -63,5 +63,14 @@
     <Image Include="GameCtrl.ico">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="icon1.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="0_original.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="help.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>
