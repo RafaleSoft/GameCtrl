@@ -3,6 +3,9 @@
 #include "resource.h"
 
 
+extern const char *USER_NAME;
+extern const char *PASSWORD;
+
 // Global data and registry structure
 struct GameCtrlData_st
 {
@@ -49,7 +52,7 @@ BOOL	CheckSecurity(const char* file);
 PACL	SetSecurity(PSECURITY_DESCRIPTOR psec);
 PACL	UnsetSecurity(PSECURITY_DESCRIPTOR psec);
 BOOL	FindUser(const char* USerName);
-BOOL	CreateUser(const char* UserName);
+BOOL	CreateUser(const char* UserName, const char* PassWord);
 BOOL	DeleteUser(const char* UserName);
 PSECURITY_DESCRIPTOR GetFileDACL(const char* file);
 BOOL	SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec, PACL pNewAcl);

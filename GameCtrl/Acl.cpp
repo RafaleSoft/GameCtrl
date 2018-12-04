@@ -139,7 +139,7 @@ LPVOID RetrieveTokenInformationClass(HANDLE hToken, TOKEN_INFORMATION_CLASS Info
 
 
 
-BOOL CreateUser(const char* UserName)
+BOOL CreateUser(const char* UserName, const char* PassWord)
 {
 	USER_INFO_1  ui;
 	ZeroMemory(&ui, sizeof(ui));
@@ -147,7 +147,7 @@ BOOL CreateUser(const char* UserName)
 	wchar_t uname[DEFAULT_BUFSIZE];
 	MultiByteToWideChar(CP_ACP, 0, UserName, -1, uname, DEFAULT_BUFSIZE);
 	wchar_t pwd[DEFAULT_BUFSIZE];
-	MultiByteToWideChar(CP_ACP, 0, UserName, -1, pwd, DEFAULT_BUFSIZE);
+	MultiByteToWideChar(CP_ACP, 0, PassWord, -1, pwd, DEFAULT_BUFSIZE);
 	ui.usri1_name = uname;
 	ui.usri1_password = pwd;
 	ui.usri1_priv = USER_PRIV_USER;
@@ -470,7 +470,7 @@ BOOL CheckSecurity(const char* file)
 				else
 				{
 					if ((FALSE == IsSIDAdmin(account)) &&
-						(0 != strcmp(Name, "GameCtrl")) &&
+						(0 != strcmp(Name, USER_NAME)) &&
 						(FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE)))
 					{
 						//char buffer[DEFAULT_BUFSIZE];
@@ -578,7 +578,7 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 	TCHAR ReferencedDomainName[DEFAULT_BUFSIZE];
 	DWORD cchReferencedDomainName = DEFAULT_BUFSIZE;
 	SID_NAME_USE peUse;
-	if (FALSE == LookupAccountName(NULL, "GameCtrl", sidbuffer, &cbSid, ReferencedDomainName, &cchReferencedDomainName, &peUse))
+	if (FALSE == LookupAccountName(NULL, USER_NAME, sidbuffer, &cbSid, ReferencedDomainName, &cchReferencedDomainName, &peUse))
 	{
 		CheckError("Compte de jeu non installé", ::GetLastError());
 		return NULL;
@@ -636,7 +636,7 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 					if ((FALSE == IsSIDAdmin(account)) &&
 						(FILE_GENERIC_EXECUTE == (access & FILE_GENERIC_EXECUTE)))
 					{
-						if (0 != strcmp(Name, "GameCtrl"))
+						if (0 != strcmp(Name, USER_NAME))
 							allowed->Mask = access & ~FILE_EXECUTE;
 						else	// Ensure GameCtrl will be able to execute the game
 						{

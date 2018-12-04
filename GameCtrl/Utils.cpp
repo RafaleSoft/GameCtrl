@@ -1,4 +1,4 @@
-// GameCtrl.cpp : Defines the entry point for the application.
+// Utils.cpp : Defines the utility functions for the application.
 //
 
 #include "stdafx.h"
@@ -14,6 +14,15 @@ static const char *ERREUR_STR = "Erreur";
 static const char *WARNING_STR = "Attention";
 static const char *INFO_STR = "Information";
 
+extern "C"
+{
+	const char *USER_NAME = "GameCtrl";
+	const wchar_t *W_USER_NAME = L"GameCtrl";
+	const char *PASSWORD = "RaFaLe99";
+	const wchar_t *W_PASSWORD = L"RaFaLe99";
+}
+
+static const char *PATCH = "A,NCK+\"2=4JMAA";
 
 wchar_t *toWchar(const char *text)
 {
@@ -122,7 +131,7 @@ BOOL Install(BOOL force)
 		res = UnInstall(force);
 
 	if (TRUE == res)
-		res = CreateUser("GameCtrl");
+		res = CreateUser(USER_NAME, PASSWORD);
 
 	if (TRUE == res)
 		Info(IDS_INSTALL_SUCCEEDED);
@@ -134,7 +143,7 @@ BOOL Install(BOOL force)
 
 BOOL UnInstall(BOOL force)
 {
-	BOOL res = DeleteUser("GameCtrl");
+	BOOL res = DeleteUser(USER_NAME);
 
 	if (TRUE == res)
 		Info(IDS_UNINSTALL_SUCCEEDED);
@@ -273,9 +282,9 @@ BOOL runGame(const char *path)
 	siw.lpDesktop = L""; // "winsta0\\default"; Why this does not work even if I add ACEs to Desktop & Winsta ?
 
 	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
-	if (FALSE == CreateProcessWithLogonW(	L"GameCtrl",
+	if (FALSE == CreateProcessWithLogonW(	W_USER_NAME,
 											L".",
-											L"GameCtrl",
+											W_PASSWORD,
 											0,
 											gamePath,
 											NULL,
@@ -338,7 +347,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 	FILETIME currentTime = { 0, 0 };
 	if (FALSE == SystemTimeToFileTime(&SystemTime, &currentTime))
 	{
-		CheckError("Impossible d'obtenir la date courante:", ::GetLastError());
+		CheckError("Impossible d'obtenir la date courante:", GetLastError());
 		return FALSE;
 	}
 
@@ -355,10 +364,13 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 		SystemTime.wDayOfWeek = 1;
 		if (FALSE == SystemTimeToFileTime(&SystemTime, &data.NextUpdateTime))
 		{
-			CheckError("Impossible d'obtenir la date courante:", ::GetLastError());
+			CheckError("Impossible d'obtenir la date courante:", GetLastError());
 			return FALSE;
 		}
 	}
+
+	// TODO: use modulo to satrt at 00:00,
+	// i.e. : 864000000000 ns
 
 	LONG cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
 	while (1 == cmp)		// Reset delay is necessary
@@ -371,10 +383,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 		ULARGE_INTEGER delta;
 		delta.QuadPart = data.NbDaysToReinit * 24 * 60 * 60;
 		delta.QuadPart *= 1000 * 1000 * 10;	// in 100ns intervals.
-
-		// TODO: use modulo to satrt at 00:00,
-		// i.e. : 864000000000 ns
-
+				
 		next.QuadPart = next.QuadPart + delta.QuadPart;
 		data.NextUpdateTime.dwHighDateTime = next.HighPart;
 		data.NextUpdateTime.dwLowDateTime = next.LowPart;
@@ -406,7 +415,7 @@ BOOL adjustMenu(const GameCtrlData_st &data)
 
 	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
 	{
-		CheckError("Impossible d'ajouter une entrée au menu de l'application:", ::GetLastError());
+		CheckError("Impossible d'ajouter une entrée au menu de l'application:", GetLastError());
 		return FALSE;
 	}
 
@@ -488,11 +497,52 @@ BOOL CheckInstall(GameCtrlData_st &data)
 	else if (FALSE == adjustMenu(data))
 		return FALSE;
 
-	BOOL res = FindUser("GameCtrl");
+	BOOL res = FindUser(USER_NAME);
 
 	if (TRUE == res)
 		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
 			res = res & CheckSecurity(data.Games[i]);
+
+
+#ifdef SHAREWARE
+	SYSTEMTIME SystemTime;
+	GetSystemTime(&SystemTime);
+	FILETIME currentTime = { 0, 0 };
+	if (FALSE == SystemTimeToFileTime(&SystemTime, &currentTime))
+	{
+		CheckError("Impossible d'obtenir la date courante:", GetLastError());
+		return FALSE;
+	}
+
+	char buffer[DEFAULT_BUFSIZE];
+	memset(buffer, 0, DEFAULT_BUFSIZE);
+	const char *info = "Logiciel utilisable jusqu'au: \n\n";
+	size_t infolen = strlen(info);
+	strcpy_s(buffer, DEFAULT_BUFSIZE, info);
+
+	SYSTEMTIME LastSystemTime;
+	memset(&LastSystemTime, 0, sizeof(SYSTEMTIME));
+
+	LastSystemTime.wDay = *((unsigned char*)&PATCH[10]);
+	LastSystemTime.wMonth = *((unsigned char*)&PATCH[11]);
+	LastSystemTime.wYear = *((unsigned short*)&PATCH[12]);
+	
+	sprintf_s(buffer + infolen, DEFAULT_BUFSIZE - infolen, "%d / %d / %d", LastSystemTime.wDay, LastSystemTime.wMonth, LastSystemTime.wYear);
+	
+	FILETIME LastUpdateTime;
+	SystemTimeToFileTime(&LastSystemTime, &LastUpdateTime);
+
+	LONG cmp = CompareFileTime(&currentTime, &LastUpdateTime);
+	if (1 == cmp)		// Reset delay is necessary
+	{
+		Error(IDS_LIMITREACHED);
+		return FALSE;
+	}
+	else
+	{
+		MessageBox(hWnd, buffer, INFO_STR, MB_OK | MB_ICONINFORMATION);
+	}
+#endif
 
 	return res;
 }
