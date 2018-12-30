@@ -5,6 +5,7 @@
 
 # Non public stuff
 Patch/
+Install/Output/
 
 # User-specific files
 *.suo

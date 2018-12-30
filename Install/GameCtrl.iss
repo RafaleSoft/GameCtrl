@@ -3,16 +3,20 @@
 
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING .ISS SCRIPT FILES!
 
+#define MyApplication "GameCtrl"
+#define MyVersion "1.0"
+
 [Setup]
-AppName={cm:GameCtrl}
-AppId=GameCtrl
-AppVerName={cm:GameCtrl,1.0}
-DefaultDirName={pf}\{cm:GameCtrl}
-DefaultGroupName={cm:MyAppName}
+AppName={cm:MyAppName}
+AppId={#MyApplication}
+AppVerName={cm:MyAppVerName,{#MyVersion}}
+DefaultDirName={pf}\{#MyApplication}
+DefaultGroupName={#MyApplication}
 UninstallDisplayIcon={app}\GameCtrl.exe
 VersionInfoDescription=My Program Setup
-VersionInfoProductName=My Program
-OutputDir=userdocs:Inno Setup Examples Output
+VersionInfoProductName={#MyApplication}
+VersionInfoVersion={#MyVersion}
+OutputBaseFilename={#MyApplication}Setup
 ; Uncomment the following line to disable the "Select Setup Language"
 ; dialog and have it rely solely on auto-detection.
 ;ShowLanguageDialog=no
@@ -24,34 +28,24 @@ OutputDir=userdocs:Inno Setup Examples Output
 
 [Languages]
 Name: en; MessagesFile: "compiler:Default.isl"
-Name: nl; MessagesFile: "compiler:Languages\Dutch.isl"
-Name: de; MessagesFile: "compiler:Languages\German.isl"
+Name: fr; MessagesFile: "compiler:Languages\French.isl"
 
 [Messages]
 en.BeveledLabel=English
-nl.BeveledLabel=Nederlands
-de.BeveledLabel=Deutsch
-
+fr.BeveledLabel=French
+                       
 [CustomMessages]
-en.MyDescription=My description
-en.MyAppName=My Program
-en.MyAppVerName=My Program %1
-nl.MyDescription=Mijn omschrijving
-nl.MyAppName=Mijn programma
-nl.MyAppVerName=Mijn programma %1
-de.MyDescription=Meine Beschreibung
-de.MyAppName=Meine Anwendung
-de.MyAppVerName=Meine Anwendung %1
+en.MyDescription=A simple and powerfull game limiter
+en.MyAppName=Game Control
+en.MyAppVerName=Game Control %1
+fr.MyDescription=Un limiteur de temps de jeu simple et puissant
+fr.MyAppName=Game Control
+fr.MyAppVerName=Game Control %1
 
 [Files]
-Source: "GameCtrl.exe"; DestDir: "{app}"
-Source: "GameCtrl.chm"; DestDir: "{app}"; Languages: en
+Source: "../Release/GameCtrl.exe"; DestDir: "{app}"
 Source: "Readme.txt"; DestDir: "{app}"; Languages: en; Flags: isreadme
 
 [Icons]
-Name: "{group}\{cm:GameCtrl}"; Filename: "{app}\GameCtrl.exe"
-Name: "{group}\{cm:UninstallProgram,{cm:GameCtrl}}"; Filename: "{uninstallexe}"
+Name: "{group}\{#MyApplication}"; Filename: "{app}\GameCtrl.exe"
 
-[Tasks]
-; The following task doesn't do anything and is only meant to show [CustomMessages] usage
-Name: mytask; Description: "{cm:MyDescription}"
