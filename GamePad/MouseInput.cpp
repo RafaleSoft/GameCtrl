@@ -3,7 +3,6 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include <dinput.h>
 #include "ISystem.h"
 #include "MouseInput.h"
 
@@ -13,49 +12,52 @@
 
 CMouseInput::CMouseInput(CISystem *ISystem)
 {
-	m_lpDeviceInstance = ISystem->GetGUIDInstance(DI8DEVTYPE_MOUSE);
-	LPDIRECTINPUTDEVICE lp;
-
-	HRESULT result = ISystem->m_lpDirectInput->CreateDevice(m_lpDeviceInstance->guidInstance, 
-															&lp,
-															NULL);
-	if (result != DI_OK)
+	if (CreateDevice(ISystem, DI8DEVTYPE_MOUSE))
 	{
-		if (result == DIERR_DEVICENOTREG )
-			MessageBox(NULL, "Device not registered !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_INVALIDPARAM )
-			AfxMessageBox("Device not resdy !");
-		else if (result == DIERR_NOINTERFACE  )
-			AfxMessageBox("Device has no available interface !");
-		else if (result == DIERR_NOTINITIALIZED  )
-			AfxMessageBox("Device not initialised !");
-		else if (result == DIERR_OUTOFMEMORY   )
-			AfxMessageBox("Device out of memory !");
-		else
-			AfxMessageBox("Unable to initialise Device due to unknown error !");
+		m_capabilities.dwSize = sizeof(DIDEVCAPS);
+		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
+			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
+
+		if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIMouse))
+			MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
 	}
- 
-	lp->QueryInterface(IID_IDirectInputDevice2,(void **)&m_lpDirectInputDevice);
-	lp->Release();
-
-	result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->m_hWnd,DISCL_BACKGROUND|DISCL_NONEXCLUSIVE);
-
-	if (result == DIERR_INVALIDPARAM)
-		AfxMessageBox("Invalid parameter !");
-	else if (result == DIERR_NOTINITIALIZED )
-		AfxMessageBox("Object not initialised !");
-
-	m_capabilities.dwSize = sizeof(DIDEVCAPS);
-	if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
-		AfxMessageBox("Unable to read Device capabilities !");
-
-	if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIMouse))
-		AfxMessageBox("Failed to set data format");
 }
 
 CMouseInput::~CMouseInput()
 {
 
+}
+
+const std::string CMouseInput::GetTypeName() const
+{
+	std::string dname = "";
+
+	if (m_lpDeviceInstance == NULL)
+		return "";
+
+	BYTE type = BYTE(m_lpDeviceInstance->dwDevType & 0xFF);
+	BYTE subtype = BYTE((m_lpDeviceInstance->dwDevType >> 8) & 0xFF);
+
+	if (type == DI8DEVTYPE_MOUSE)
+	{
+		if (subtype == DI8DEVTYPEMOUSE_UNKNOWN)
+			dname = "unknown";
+		else if (subtype == DI8DEVTYPEMOUSE_TRADITIONAL)
+			dname = "traditionnal";
+		else if (subtype == DI8DEVTYPEMOUSE_FINGERSTICK)
+			dname = "fingerstick";
+		else if (subtype == DI8DEVTYPEMOUSE_TOUCHPAD)
+			dname = "touchpad";
+		else if (subtype == DI8DEVTYPEMOUSE_TRACKBALL)
+			dname = "trackball";
+		else if (subtype == DI8DEVTYPEMOUSE_ABSOLUTE)
+			dname = "absolute";
+
+		dname += " mouse";
+		return dname;
+	}
+	else
+		return CDeviceInput::GetTypeName();
 }
 
 LPCDIMOUSESTATE CMouseInput::getMouseState()
@@ -65,14 +67,14 @@ LPCDIMOUSESTATE CMouseInput::getMouseState()
 	result = m_lpDirectInputDevice->Acquire();
 	if (result != DI_OK)
 	{
-		AfxMessageBox("Device not acquired!");
+		MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);
 		return NULL;
 	}
 
 	result = m_lpDirectInputDevice->Poll();
 	if (result != DI_OK)
 	{
-		AfxMessageBox("Device not polled!");
+		MessageBox(NULL, "Device not polled!", "Erreur", MB_OK | MB_ICONERROR);
 		return NULL;
 	}
 
@@ -81,7 +83,7 @@ LPCDIMOUSESTATE CMouseInput::getMouseState()
 
 	if (result != DI_OK)
 	{
-		AfxMessageBox("Device state unavailable!");
+		MessageBox(NULL, "Device state unavailable!", "Erreur", MB_OK | MB_ICONERROR);
 		return NULL;
 	}
 	else

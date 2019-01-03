@@ -20,7 +20,12 @@ public:
 	CKeyboardInput(CISystem *ISystem);
 	virtual ~CKeyboardInput();
 
+	/**	Implements base class. */
 	virtual DEVICE_TYPE GetType() const { return DEVICE_KEYBOARD; };
+
+	/**	Implements base class. */
+	virtual const std::string GetTypeName() const;
+
 
 	LPCKEYBOARDSTATE getKeyboardState();
 
@@ -44,9 +49,9 @@ public:
 	//	a Win32 SDK Virtual Key
 	unsigned char DIK_to_VK(unsigned char key) const;
 
-protected:
-	friend UINT Poller( LPVOID pParam );
 
+protected:
+	
 	KEYBOARDSTATE 	m_keyboardState;
 		
 	std::vector<WORD>	m_buffer;

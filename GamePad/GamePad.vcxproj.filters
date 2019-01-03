@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -50,16 +47,10 @@
     <ClCompile Include="GamePad.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ControllerInput.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DeviceInput.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="InputX.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ISystem.cpp">

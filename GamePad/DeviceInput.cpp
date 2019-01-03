@@ -3,7 +3,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include <dinput.h>
+#include "ISystem.h"
 #include "DeviceInput.h"
 
 //////////////////////////////////////////////////////////////////////
@@ -31,7 +31,70 @@ const std::string CDeviceInput::GetName() const
 		return "";
 }
 
-std::string CDeviceInput::GetProductName() const
+bool CDeviceInput::CreateDevice(CISystem *ISystem, DWORD guid)
+{
+	if ((NULL == ISystem) || 
+		((DI8DEVTYPE_KEYBOARD != guid) &&
+		(DI8DEVTYPE_MOUSE != guid) &&
+		(DI8DEVTYPE_GAMEPAD != guid)))
+	{
+		return false;
+	}
+
+	m_lpDeviceInstance = ISystem->GetGUIDInstance(guid);
+	
+	LPDIRECTINPUTDEVICE8 lp = NULL;
+	HRESULT result = ISystem->getDirectInput()->CreateDevice(m_lpDeviceInstance->guidInstance,
+															&lp,
+															NULL);
+	if (result != DI_OK)
+	{
+		if (result == DIERR_DEVICENOTREG)
+			MessageBox(NULL, "Device not registered !", "Erreur", MB_OK | MB_ICONERROR);
+		else if (result == DIERR_INVALIDPARAM)
+			MessageBox(NULL, "Device not ready !", "Erreur", MB_OK | MB_ICONERROR);
+		else if (result == DIERR_NOINTERFACE)
+			MessageBox(NULL, "Device has no available interface !", "Erreur", MB_OK | MB_ICONERROR);
+		else if (result == DIERR_NOTINITIALIZED)
+			MessageBox(NULL, "Device not initialised !", "Erreur", MB_OK | MB_ICONERROR);
+		else if (result == DIERR_OUTOFMEMORY)
+			MessageBox(NULL, "Device out of memory !", "Erreur", MB_OK | MB_ICONERROR);
+		else
+			MessageBox(NULL, "Unable to initialise Device due to unknown error !", "Erreur", MB_OK | MB_ICONERROR);
+		
+		return false;
+	}
+	else
+	{
+		lp->QueryInterface(IID_IDirectInputDevice2, (void **)&m_lpDirectInputDevice);
+		lp->Release();
+
+		result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->getHWND(), 
+															DISCL_FOREGROUND | DISCL_EXCLUSIVE);
+
+		if (result == DIERR_INVALIDPARAM)
+		{
+			MessageBox(NULL, "Invalid parameter !", "Erreur", MB_OK | MB_ICONERROR);
+			return false;
+		}
+		else if (result == DIERR_NOTINITIALIZED)
+		{
+			MessageBox(NULL, "Object not initialised !", "Erreur", MB_OK | MB_ICONERROR);
+			return false;
+		}
+
+		m_capabilities.dwSize = sizeof(DIDEVCAPS);
+		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
+		{
+			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+const std::string CDeviceInput::GetProductName() const
 {
 	if (m_lpDeviceInstance != NULL)
 		return std::string(m_lpDeviceInstance->tszProductName);
@@ -49,72 +112,7 @@ const std::string CDeviceInput::GetTypeName() const
 	BYTE type = BYTE(m_lpDeviceInstance->dwDevType & 0xFF);
 	BYTE subtype = BYTE((m_lpDeviceInstance->dwDevType>>8) & 0xFF);
 
-	if (type == DIDEVTYPE_MOUSE)
-	{
-		if (subtype == DIDEVTYPEMOUSE_UNKNOWN )
-			dname +=" unknown";
-		else if (subtype == DIDEVTYPEMOUSE_TRADITIONAL )
-			dname +=" traditionnal";
-		else if (subtype == DIDEVTYPEMOUSE_FINGERSTICK )
-			dname +=" fingerstick";
-		else if (subtype == DIDEVTYPEMOUSE_TOUCHPAD )
-			dname +=" touchpad";
-		else if (subtype == DIDEVTYPEMOUSE_TRACKBALL )
-			dname +=" trackball";
-
-		dname +=" mouse";
-	}
-	else if (type == DIDEVTYPE_KEYBOARD)
-	{
-		if (subtype == DIDEVTYPEKEYBOARD_UNKNOWN )
-			dname +=" unknown";
-		else if (subtype == DIDEVTYPEKEYBOARD_PCXT )
-			dname +=" pc xt";
-		else if (subtype == DIDEVTYPEKEYBOARD_OLIVETTI )
-			dname +=" olivetti";
-		else if (subtype == DIDEVTYPEKEYBOARD_PCAT )
-			dname +=" pc at";
-		else if (subtype == DIDEVTYPEKEYBOARD_PCENH )
-			dname +=" pc enhanced";
-		else if (subtype == DIDEVTYPEKEYBOARD_NOKIA1050 )
-			dname +=" nokia 1050";
-		else if (subtype == DIDEVTYPEKEYBOARD_NOKIA9140 )
-			dname +=" nokia 9140";
-		else if (subtype == DIDEVTYPEKEYBOARD_NEC98 )
-			dname +=" nec 98";
-		else if (subtype == DIDEVTYPEKEYBOARD_NEC98LAPTOP )
-			dname +=" nec 98 laptop";
-		else if (subtype == DIDEVTYPEKEYBOARD_NEC98106 )
-			dname +=" nec 98106";
-		else if (subtype == DIDEVTYPEKEYBOARD_JAPAN106 )
-			dname +=" japan 106";
-		else if (subtype == DIDEVTYPEKEYBOARD_JAPANAX )
-			dname +=" japan ax";
-		else if (subtype == DIDEVTYPEKEYBOARD_J3100 )
-			dname +=" j3100";
-
-		dname +=" keyboard";
-	}
-	else if (type == DIDEVTYPE_JOYSTICK)
-	{
-		if (subtype == DIDEVTYPEJOYSTICK_UNKNOWN )
-			dname +="unknown";
-		else if (subtype == DIDEVTYPEJOYSTICK_TRADITIONAL )
-			dname +="traditional";
-		else if (subtype == DIDEVTYPEJOYSTICK_FLIGHTSTICK )
-			dname +="flistick";
-		else if (subtype == DIDEVTYPEJOYSTICK_GAMEPAD )
-			dname +="gamepad";
-		else if (subtype == DIDEVTYPEJOYSTICK_RUDDER )
-			dname +="rudder";
-		else if (subtype == DIDEVTYPEJOYSTICK_WHEEL )
-			dname +="wheel";
-		else if (subtype == DIDEVTYPEJOYSTICK_HEADTRACKER )
-			dname +="headtracker";
-
-		dname +=" joystick";
-	}
-	else if (type == DIDEVTYPE_DEVICE)
+	if (type == DI8DEVTYPE_DEVICE)
 		dname +=" ??";
 
 	if (m_lpDeviceInstance->dwDevType & DIDEVTYPE_HID)
@@ -123,14 +121,14 @@ const std::string CDeviceInput::GetTypeName() const
 	return dname;
 }
 
-
+/*
 bool CDeviceInput::SetEventNotification(CEvent *evt)
 {
 	HRESULT res = m_lpDirectInputDevice->SetEventNotification(HANDLE(*evt));
 
 	return ((res == DI_OK) || (DI_POLLEDDEVICE));
 }
-
+*/
 
 bool CDeviceInput::GetDeviceState(void)
 {

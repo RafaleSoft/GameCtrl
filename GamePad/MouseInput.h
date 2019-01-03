@@ -22,7 +22,12 @@ public:
 	CMouseInput(CISystem *ISystem);
 	virtual ~CMouseInput();
 
+	/**	Implements base class. */
 	virtual DEVICE_TYPE GetType() const { return DEVICE_MOUSE; };
+
+	/**	Implements base class. */
+	virtual const std::string GetTypeName() const;
+
 
 	LPCDIMOUSESTATE getMouseState();
 };

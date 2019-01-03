@@ -3,7 +3,6 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include <dinput.h>
 #include "ISystem.h"
 #include "ControllerInput.h"
 
@@ -49,39 +48,8 @@ CControllerInput::CControllerInput(CISystem *ISystem)
 	for (int i=0;i<NB_FF_EFFECTS;i++)
 		m_effects[i]=NULL;
 
-	m_lpDeviceInstance = ISystem->GetGUIDInstance(DI8DEVTYPE_GAMEPAD);
-	LPDIRECTINPUTDEVICE lp;
-
-	HRESULT result = ISystem->m_lpDirectInput->CreateDevice(m_lpDeviceInstance->guidInstance, 
-															&lp,
-															NULL);
-	if (result != DI_OK)
+	if (CreateDevice(ISystem, DI8DEVTYPE_GAMEPAD))
 	{
-		if (result == DIERR_DEVICENOTREG )
-			MessageBox(NULL, "Device not registered !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_INVALIDPARAM )
-			MessageBox(NULL, "Device not ready !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_NOINTERFACE  )
-			MessageBox(NULL, "Device has no available interface !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_NOTINITIALIZED  )
-			MessageBox(NULL, "Device not initialised !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_OUTOFMEMORY   )
-			MessageBox(NULL, "Device out of memory !", "Erreur", MB_OK | MB_ICONERROR);
-		else
-			MessageBox(NULL, "Unable to initialise Device due to unknown error !", "Erreur", MB_OK | MB_ICONERROR);
-	}
-	else
-	{
-		lp->QueryInterface(IID_IDirectInputDevice2,(void **)&m_lpDirectInputDevice);
-		lp->Release();
-
-		result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->m_hWnd,DISCL_FOREGROUND|DISCL_EXCLUSIVE);
-
-		if (result == DIERR_INVALIDPARAM)
-			MessageBox(NULL, "Invalid parameter !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_NOTINITIALIZED )
-			MessageBox(NULL, "Object not initialised !", "Erreur", MB_OK | MB_ICONERROR);
-
 		m_capabilities.dwSize = sizeof(DIDEVCAPS);
 		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
 			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
@@ -116,27 +84,59 @@ CControllerInput::CControllerInput(CISystem *ISystem)
 
 CControllerInput::~CControllerInput()
 {	
-	for (int i=0;i<m_effectInstances.size();i++)
+	for (size_t i=0;i<m_effectInstances.size();i++)
 		delete ((LPDIEFFECTINFO)(m_effectInstances[i]));
 
 	m_effectInstances.clear();
 
-	for (unsigned int i=0;i<NB_FF_EFFECTS;i++)
+	for (unsigned int i=0; i<NB_FF_EFFECTS; i++)
 		if (m_effects[i] != NULL)
 			m_effects[i]->Release();
 }
 
 
+const std::string CControllerInput::GetTypeName() const
+{
+	std::string dname = "";
 
+	if (m_lpDeviceInstance == NULL)
+		return "";
+
+	BYTE type = BYTE(m_lpDeviceInstance->dwDevType & 0xFF);
+	BYTE subtype = BYTE((m_lpDeviceInstance->dwDevType >> 8) & 0xFF);
+
+	if (type == DI8DEVTYPE_JOYSTICK)
+	{
+		if (subtype == DI8DEVTYPEJOYSTICK_LIMITED)
+			dname = "limited";
+		else if (subtype == DI8DEVTYPEJOYSTICK_STANDARD)
+			dname = "standard";
+
+		dname += " joystick";
+		return dname;
+	}
+	else if (type == DI8DEVTYPE_GAMEPAD)
+	{
+		if (subtype == DI8DEVTYPEGAMEPAD_LIMITED)
+			dname = "limited";
+		else if (subtype == DI8DEVTYPEGAMEPAD_STANDARD)
+			dname = "standard";
+		else if (subtype == DI8DEVTYPEGAMEPAD_TILT)
+			dname = "tilt";
+
+		dname += " gamepad";
+		return dname;
+	}
+	else
+		return CDeviceInput::GetTypeName();
+}
 
 LPCDIJOYSTATE2 CControllerInput::getControllerState()
 {
-	HRESULT result;
-
 	if (m_lpDirectInputDevice == NULL)
 		return &m_controllerState;
 
-	result = m_lpDirectInputDevice->Acquire();
+	HRESULT result = m_lpDirectInputDevice->Acquire();
 	if (result != DI_OK)
 	{
 		MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);

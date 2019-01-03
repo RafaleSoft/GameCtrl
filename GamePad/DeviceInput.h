@@ -10,7 +10,8 @@
 #endif // _MSC_VER > 1000
 
 #include "GamePad.h"
-class CEvent;
+
+class CISystem;
 
 
 class GAMEPAD_API CDeviceInput
@@ -36,12 +37,14 @@ public:
 
 	virtual DEVICE_TYPE GetType() const = 0;
 
-	bool SetEventNotification(CEvent *evt);
+	//bool SetEventNotification(CEvent *evt);
 	bool GetDeviceState(void);
 
 	unsigned int data;
 
 protected:
+	bool CreateDevice(CISystem *ISystem, DWORD guid);
+
 	LPDIRECTINPUTDEVICE2	m_lpDirectInputDevice;
 	LPCDIDEVICEINSTANCE		m_lpDeviceInstance;
 	DIDEVCAPS				m_capabilities;

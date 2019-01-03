@@ -11,6 +11,7 @@
 
 #include <vector>
 #include "DeviceInput.h"
+
 class CISystem;
 
 
@@ -56,8 +57,12 @@ public:
 	/** Destructor. */
 	virtual ~CControllerInput();
 
-	/** Returns the type of this device. */
+	/** Implements base class. */
 	virtual DEVICE_TYPE GetType() const { return DEVICE_CONTROLLER; };
+
+	/**	Implements base class. */
+	virtual const std::string GetTypeName() const;
+
 
 	bool Configure() const
 	{

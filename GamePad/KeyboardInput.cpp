@@ -3,7 +3,6 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include <dinput.h>
 #include "ISystem.h"
 #include "KeyboardInput.h"
 
@@ -241,46 +240,17 @@ const unsigned char DIK_to_VK_Map[0xE0] =
 
 CKeyboardInput::CKeyboardInput(CISystem *ISystem)
 {
-	m_lpDeviceInstance = ISystem->GetGUIDInstance(DI8DEVTYPE_KEYBOARD);
-	LPDIRECTINPUTDEVICE lp;
-
-	HRESULT result = ISystem->m_lpDirectInput->CreateDevice(m_lpDeviceInstance->guidInstance, 
-															&lp,
-															NULL);
-	if (result != DI_OK)
+	if (CreateDevice(ISystem, DI8DEVTYPE_KEYBOARD))
 	{
-		if (result == DIERR_DEVICENOTREG )
-			MessageBox(NULL, "Device not registered !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_INVALIDPARAM )
-			MessageBox(NULL, "Device not ready !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_NOINTERFACE  )
-			MessageBox(NULL, "Device has no available interface !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_NOTINITIALIZED  )
-			MessageBox(NULL, "Device not initialised !", "Erreur", MB_OK | MB_ICONERROR);
-		else if (result == DIERR_OUTOFMEMORY   )
-			MessageBox(NULL, "Device out of memory !", "Erreur", MB_OK | MB_ICONERROR);
-		else
-			MessageBox(NULL, "Unable to initialise Device due to unknown error !", "Erreur", MB_OK | MB_ICONERROR);
+		m_capabilities.dwSize = sizeof(DIDEVCAPS);
+		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
+			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
+
+		if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIKeyboard))
+			MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
+
+		memset(&m_keyboardState, 0, sizeof(KEYBOARDSTATE));
 	}
- 
-	lp->QueryInterface(IID_IDirectInputDevice2,(void **)&m_lpDirectInputDevice);
-	lp->Release();
-
-	result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->m_hWnd,DISCL_BACKGROUND|DISCL_NONEXCLUSIVE);
-
-	if (result == DIERR_INVALIDPARAM)
-		MessageBox(NULL, "Invalid parameter !", "Erreur", MB_OK | MB_ICONERROR);
-	else if (result == DIERR_NOTINITIALIZED )
-		MessageBox(NULL, "Object not initialised !", "Erreur", MB_OK | MB_ICONERROR);
-
-	m_capabilities.dwSize = sizeof(DIDEVCAPS);
-	if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
-		MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
-
-	if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIKeyboard))
-		MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
-
-	memset(&m_keyboardState,0,sizeof(KEYBOARDSTATE));
 }
 
 CKeyboardInput::~CKeyboardInput()
@@ -288,6 +258,51 @@ CKeyboardInput::~CKeyboardInput()
 
 }
 
+const std::string CKeyboardInput::GetTypeName() const
+{
+	std::string dname = "";
+
+	if (m_lpDeviceInstance == NULL)
+		return "";
+
+	BYTE type = BYTE(m_lpDeviceInstance->dwDevType & 0xFF);
+	BYTE subtype = BYTE((m_lpDeviceInstance->dwDevType >> 8) & 0xFF);
+
+	if (type == DI8DEVTYPE_KEYBOARD)
+	{
+		if (subtype == DI8DEVTYPEKEYBOARD_UNKNOWN)
+			dname = "unknown";
+		else if (subtype == DI8DEVTYPEKEYBOARD_PCXT)
+			dname = "pc xt";
+		else if (subtype == DI8DEVTYPEKEYBOARD_OLIVETTI)
+			dname = "olivetti";
+		else if (subtype == DI8DEVTYPEKEYBOARD_PCAT)
+			dname = "pc at";
+		else if (subtype == DI8DEVTYPEKEYBOARD_PCENH)
+			dname = "pc enhanced";
+		else if (subtype == DI8DEVTYPEKEYBOARD_NOKIA1050)
+			dname = "nokia 1050";
+		else if (subtype == DI8DEVTYPEKEYBOARD_NOKIA9140)
+			dname = "nokia 9140";
+		else if (subtype == DI8DEVTYPEKEYBOARD_NEC98)
+			dname = "nec 98";
+		else if (subtype == DI8DEVTYPEKEYBOARD_NEC98LAPTOP)
+			dname = "nec 98 laptop";
+		else if (subtype == DI8DEVTYPEKEYBOARD_NEC98106)
+			dname = "nec 98106";
+		else if (subtype == DI8DEVTYPEKEYBOARD_JAPAN106)
+			dname = "japan 106";
+		else if (subtype == DI8DEVTYPEKEYBOARD_JAPANAX)
+			dname = "japan ax";
+		else if (subtype == DI8DEVTYPEKEYBOARD_J3100)
+			dname = "j3100";
+
+		dname += " keyboard";
+		return dname;
+	}
+	else
+		return CDeviceInput::GetTypeName();
+}
 
 LPCKEYBOARDSTATE CKeyboardInput::getKeyboardState()
 {

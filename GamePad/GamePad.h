@@ -14,6 +14,11 @@
 #include <vector>
 #include <string>
 
+#ifndef DIRECTINPUT_VERSION
+	#define DIRECTINPUT_VERSION 0x0800
+#endif
+
+#include <dinput.h>
 
 //	Extended constant joystick state
 typedef DIJOYSTATE2 const * const LPCDIJOYSTATE2;
@@ -24,17 +29,3 @@ typedef KEYBOARDSTATE const * const LPCKEYBOARDSTATE;
 
 //	Mouse state
 typedef DIMOUSESTATE const * const LPCDIMOUSESTATE;
-
-
-
-// This class is exported from the GamePad.dll
-class GAMEPAD_API CGamePad
-{
-public:
-	CGamePad(void);
-	
-};
-
-extern GAMEPAD_API int nGamePad;
-
-GAMEPAD_API int fnGamePad(void);

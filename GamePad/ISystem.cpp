@@ -3,8 +3,8 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include <dinput.h>
 #include "ISystem.h"
+#include "KeyboardInput.h"
 
 
 //////////////////////////////////////////////////////////////////////
@@ -12,10 +12,12 @@
 //////////////////////////////////////////////////////////////////////
 BOOL CALLBACK DIEnumDevicesProc(LPCDIDEVICEINSTANCE lpddi,LPVOID pvRef)
 {
-	CArray<LPCDIDEVICEINSTANCE,LPCDIDEVICEINSTANCE>
-					*devInstances = (CArray<LPCDIDEVICEINSTANCE,LPCDIDEVICEINSTANCE>*)pvRef;
+	std::vector<LPCDIDEVICEINSTANCE> *devInstances = (std::vector<LPCDIDEVICEINSTANCE>*)pvRef;
 
 	LPDIDEVICEINSTANCE lpcddi = new DIDEVICEINSTANCE;
+	memcpy(lpcddi, lpddi, sizeof(DIDEVICEINSTANCE));
+
+	/*
 	lpcddi->dwSize = lpddi->dwSize; 
     lpcddi->guidInstance = lpddi->guidInstance; 
     lpcddi->guidProduct = lpddi->guidProduct; 
@@ -24,16 +26,19 @@ BOOL CALLBACK DIEnumDevicesProc(LPCDIDEVICEINSTANCE lpddi,LPVOID pvRef)
     memcpy(lpcddi->tszProductName,lpddi->tszProductName,MAX_PATH);
     lpcddi->guidFFDriver = lpddi->guidFFDriver;
     lpcddi->wUsagePage = lpddi->wUsagePage; 
-    lpcddi->wUsage = lpddi->wUsage; 
-	devInstances->Add(lpcddi);
+    lpcddi->wUsage = lpddi->wUsage;
+	*/
+	
+	devInstances->push_back(lpcddi);
 
 	return DIENUM_CONTINUE;
 }
  
-UINT Poller( LPVOID pParam )
+DWORD WINAPI Poller(LPVOID pParam)
 {
 	CISystem::LPINPUTCOLLECTION coll = (CISystem::LPINPUTCOLLECTION)pParam;
 
+	/*
 	CEvent *lck = new CEvent(TRUE,TRUE,"ISystemPollerLock",NULL );
 	CEvent *evt = new CEvent(FALSE,FALSE,"InputNotify",NULL );
 
@@ -42,34 +47,39 @@ UINT Poller( LPVOID pParam )
 	CSingleLock	lock(lck,TRUE);
 
 	HANDLE h = HANDLE(*evt);
-
+	
 	if (coll->k != NULL)
 		coll->k->SetEventNotification(evt);
 	if (coll->m != NULL)
 		coll->m->SetEventNotification(evt);
 	if (coll->c != NULL)
 		coll->c->SetEventNotification(evt);
+	*/
 
-	while ( lock.IsLocked() )
+	DWORD stop = WAIT_OBJECT_0;
+	//stop = WaitForSingleObject(m_closePollers, 0));
+
+	while ( WAIT_OBJECT_0 == stop )
 	{
 		DWORD res = 0;
 		
-		res = WaitForSingleObject(h,INFINITE);
+		//res = WaitForSingleObject(h,INFINITE);
 
 		//	poll keyboard
-		if (coll->k != NULL)
+		CKeyboardInput *k = coll->k;
+		if (k != NULL)
 		{			
-			LPCKEYBOARDSTATE ks = coll->k->getKeyboardState();
+			LPCKEYBOARDSTATE ks = k->getKeyboardState();
 			if (ks != NULL)
 			{
-				DWORD key = coll->k->hasKeyboardData(0);
+				DWORD key = k->hasKeyboardData(0);
 
 				while (key<256)
 				{
-					WORD K = ( ((WORD)(coll->k->getKeyboardData(key))) << 8) + ((WORD)(key));
-					coll->k->m_buffer.Add(K);
+					WORD K = ( ((WORD)(k->getKeyboardData(key))) << 8) + ((WORD)(key));
+					//k->m_buffer.push_back(K);
 					
-					key = coll->k->hasKeyboardData(key);
+					key = k->hasKeyboardData(key);
 				}
 			}
 		}
@@ -85,7 +95,6 @@ UINT Poller( LPVOID pParam )
 		}
 	}
 
-	delete coll;
 	return 0;
 }
 
@@ -96,25 +105,29 @@ UINT Poller( LPVOID pParam )
 CISystem::CISystem()
 	:m_lpDirectInput(NULL)
 {
-	//m_closePollers = new CEvent(FALSE,FALSE,"ISystemPollerLock",NULL );
-	//m_closePollers->ResetEvent();
+	m_closePollers = CreateEvent(	NULL, 
+									FALSE, // BOOL bManualReset,
+									TRUE, // BOOL bInitialState,
+									"ISystemPollerLock");
 }
 
 CISystem::~CISystem()
 {
-	//m_closePollers->SetEvent();
+	CloseInputSystem();
 
-	for (int i=0;i<m_pollers.size();i++)
-	{
-		WaitForSingleObject(m_pollers[i]->m_hThread,INFINITE);
-	}
+	CloseHandle(m_closePollers);
 }
 
 //////////////////////////////////////////////////////////////////////
 // Implementation
 //////////////////////////////////////////////////////////////////////
-bool CISystem::InitInputSystem(HINSTANCE hinst)
+bool CISystem::InitInputSystem(HINSTANCE hinst, HWND hWnd)
 {
+	if ((NULL == hinst) || (NULL == hWnd))
+		return false;
+
+	m_hWnd = hWnd;
+
 	if (DI_OK != DirectInput8Create(hinst, 
 									DIRECTINPUT_VERSION, 
 									IID_IDirectInput8,
@@ -138,26 +151,30 @@ bool CISystem::InitInputSystem(HINSTANCE hinst)
 
 void CISystem::CloseInputSystem()
 {
-	
-	for (int i=0;i<m_devInstances.size();i++)
+	stopPoller();
+
+	for (size_t i=0;i<m_devInstances.size();i++)
 		delete ((LPDIDEVICEINSTANCE)(m_devInstances[i]));
 
 	m_devInstances.clear();
+	m_lpDirectInput->Release();
+
+	m_lpDirectInput = NULL;
 }
 
-LPCDIDEVICEINSTANCE CISystem::GetGUIDInstance(DWORD guid)
+LPCDIDEVICEINSTANCE CISystem::GetGUIDInstance(DWORD guid) const
 {
 	bool found = false;
-	int pos = 0;
+	size_t pos = 0;
 	LPCDIDEVICEINSTANCE inst = NULL;
 
-	while ((pos<m_devInstances.size())&&(!found))
+	while ((pos < m_devInstances.size()) && (!found))
 	{
 		LPCDIDEVICEINSTANCE	devInst = (LPCDIDEVICEINSTANCE)(m_devInstances[pos++]);
 		if ( devInst->dwDevType & guid )
 		{
 			//	found only if first type equals
-			if ((devInst->dwDevType&0x7)==(guid&0x7))
+			if ((devInst->dwDevType & 0x7) == (guid & 0x7))
 			{
 				inst = devInst;
 				found = true;
@@ -174,12 +191,14 @@ bool CISystem::startPoller( CKeyboardInput *keyb, CMouseInput *mouse, CControlle
 	coll->m = mouse;
 	coll->c = ctrl;
 
-	CWinThread *poller = AfxBeginThread( Poller, coll, THREAD_PRIORITY_NORMAL, 0, 0, NULL );
+	HANDLE poller = NULL;
+	DWORD ThreadId = 0;
+	poller = CreateThread(NULL, 0, Poller, coll, CREATE_SUSPENDED, &ThreadId);
 
 	if (poller != NULL)
 	{
 		m_pollers.push_back(poller);
-		return true;
+		return ((DWORD)-1 != ResumeThread(poller));
 	}
 	else
 		return false;
@@ -187,17 +206,22 @@ bool CISystem::startPoller( CKeyboardInput *keyb, CMouseInput *mouse, CControlle
 
 bool CISystem::stopPoller(void)
 {
-	if (0 != m_closePollers->SetEvent())
+	if (0 != ResetEvent(m_closePollers))
 	{
 		DWORD res = 0;
 
-		for (int i=0;i<m_pollers.size();i++)
+		for (size_t i=0; i<m_pollers.size(); i++)
 		{
-			//	2 sec. should be enough for thread termination
-			if (WAIT_OBJECT_0 != WaitForSingleObject(m_pollers[i]->m_hThread,2000))
-				res = WAIT_FAILED; 
+			if (WAIT_OBJECT_0 != WaitForSingleObject(m_pollers[i], INFINITE))
+			{
+				res = WAIT_FAILED;
+				return false;
+			}
+			else
+				CloseHandle(m_pollers[i]);
 		}
-
+		if (0 == res)
+			m_pollers.clear();
 		return (res == 0);
 	}
 	else

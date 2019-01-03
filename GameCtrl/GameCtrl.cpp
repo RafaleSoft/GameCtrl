@@ -5,6 +5,7 @@
 #include "GameCtrl.h"
 #include <stdio.h>
 #include <CommCtrl.h>
+#include "ISystem.h"
 
 #define MAX_LOADSTRING 100
 
@@ -300,6 +301,9 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
 			return FALSE;
+
+		CISystem inputSystem;
+		inputSystem.InitInputSystem(hInstance, hWnd);
 	}
 
 
