@@ -244,8 +244,11 @@ BOOL DeleteUser(const char* UserName)
 			// Nothing done here
 			break;
 		case NERR_UserNotFound:
-			// Nothing done here
-			MessageBox(NULL, "Utilisateur inconnu", "Erreur de login", MB_OK);
+			//MessageBox(NULL, "Utilisateur inconnu", "Erreur de login", MB_OK);
+			// Nothing done here: if user is not found, 
+			// assume uninstall is in progress, or has been called & unfinished.
+			// Hence, return true here.
+			res = TRUE;
 			break;
 		case NERR_Success:
 		{
@@ -1150,120 +1153,3 @@ BOOL ObtainSid(HANDLE hToken, PSID *psid)
 	return bSuccess;
 
 }
-
-
-
-/*
-HANDLE token = NULL;
-BOOL logon = LogonUser("GameCtrl", NULL, "GameCtrl", LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &token);
-if (FALSE == logon)
-{
-CheckError("Error launching game with GameCtrl user", ::GetLastError());
-return FALSE;
-}
-*/
-/*
-logon = ImpersonateLoggedOnUser(token);
-if (FALSE == logon)
-{
-CheckError("Error launching game with GameCtrl user", ::GetLastError());
-CloseHandle(token);
-return FALSE;
-}
-*/
-// 
-// obtain a handle to the interactive windowstation
-// 
-/*
-HWINSTA hwinsta = OpenWindowStation("winsta0", FALSE, READ_CONTROL | WRITE_DAC);
-if (hwinsta == NULL)
-{
-CloseHandle(token);
-return FALSE;
-}
-HWINSTA hwinstaold = GetProcessWindowStation();
-
-
-if (!SetProcessWindowStation(hwinsta))
-{
-CloseHandle(token);
-return FALSE;
-}
-
-HDESK hdesk = OpenDesktop("default",0,FALSE,READ_CONTROL | WRITE_DAC | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS);
-if (hdesk == NULL)
-{
-CloseHandle(token);
-return FALSE;
-}
-
-PSID psid = NULL;
-if (!ObtainSid(token, &psid))
-{
-CloseHandle(token);
-return FALSE;
-}
-
-if (!AddAceToWindowStation(hwinsta, psid))
-{
-CloseHandle(token);
-return FALSE;
-}
-
-if (!AddAceToDesktop(hdesk, psid))
-{
-CloseHandle(token);
-return FALSE;
-}
-
-HeapFree(GetProcessHeap(), 0, (LPVOID)*&psid);
-CloseWindowStation(hwinsta);
-CloseDesktop(hdesk);
-
-
-SECURITY_ATTRIBUTES secAttr;
-secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-secAttr.lpSecurityDescriptor = GetFileDACL("F:\\VisualStudioProjects\\GameCtrl\\GameCtrl.exe");
-secAttr.bInheritHandle = FALSE;
-*/
-/*
-void *environment = NULL;
-if (!CreateEnvironmentBlock(&environment, token, TRUE))
-{
-CloseHandle(token);
-return false;
-}
-
-logon = ImpersonateLoggedOnUser(token);
-if (FALSE == logon)
-{
-CheckError("Error launching game with GameCtrl user", ::GetLastError());
-CloseHandle(token);
-return FALSE;
-}
-*/
-
-/*
-memset(&si, 0, sizeof(STARTUPINFO));
-si.cb = sizeof(STARTUPINFO);
-si.lpDesktop = "winsta0\\default";
-
-if (0 == CreateProcessAsUser(	token,
-NULL, //"F:\\VisualStudioProjects\\GameCtrl\\GameCtrl.exe",		// pointer to name of executable module
-"C:\\Windows\\System32\\cmd.exe", //gameArgs,		// pointer to command line string
-NULL, //&secAttr,			// process security attributes
-NULL, //&secAttr,			// thread security attributes
-FALSE,			// handle inheritance flag
-CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NEW_CONSOLE,	// creation flags
-NULL,	// pointer to new environment block
-NULL,			// pointer to current directory name
-&si,			// pointer to STARTUPINFO
-&pi))			// pointer to PROCESS_INFORMATION
-{
-CheckError("Failed to launch game", ::GetLastError());
-return FALSE;
-}
-*/
-//SetProcessWindowStation(hwinstaold);
-//CloseHandle(token);
-//return RevertToSelf();

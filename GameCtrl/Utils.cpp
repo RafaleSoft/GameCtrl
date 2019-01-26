@@ -5,7 +5,7 @@
 #include "GameCtrl.h"
 #include <stdio.h>
 #include <userenv.h>
-
+#include <tlhelp32.h>
 
 //	Process startup info
 static STARTUPINFO si;
@@ -304,6 +304,125 @@ BOOL runGame(const char *path)
 	return TRUE;
 }
 
+
+BOOL GetProcessList(DWORD ppid, DWORD *count, DWORD *list)
+{
+	if (NULL != count)
+	{
+		// if list is null, the call is only requested to count child processes.
+		if (NULL == list)
+			*count = 0;
+	}
+	else
+		return FALSE;	// Invalid Parameter.
+
+	// Take a snapshot of all processes in the system.
+	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (hProcessSnap == INVALID_HANDLE_VALUE)
+	{
+		MessageBox(hWnd, "Impossible d'obtenir un snapshot système", ERREUR_STR, MB_OK | MB_ICONINFORMATION);
+		return(FALSE);
+	}
+
+	// Set the size of the structure before using it.
+	PROCESSENTRY32 pe32;
+	pe32.dwSize = sizeof(PROCESSENTRY32);
+
+	// Retrieve information about the first process,
+	// and exit if unsuccessful
+	if (!Process32First(hProcessSnap, &pe32))
+	{
+		CheckError("Impossible d'obtenir le premier processus du snapshot système", GetLastError());
+		CloseHandle(hProcessSnap);          // clean the snapshot object
+		return(FALSE);
+	}
+
+	DWORD counted = 0;
+	// Now walk the snapshot of processes, and
+	// display information about each process in turn
+	do
+	{
+		if (ppid == pe32.th32ParentProcessID)
+		{
+			if ((NULL != list) && (counted < *count))
+				list[counted] = pe32.th32ProcessID;
+			counted++;
+		}
+	}
+	while (Process32Next(hProcessSnap, &pe32));
+
+	CloseHandle(hProcessSnap);
+	
+	if (NULL == list)
+		*count = counted;
+	
+	return(TRUE);
+}
+
+/*
+ * Not working with Bluestacks :-(
+ *
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
+{
+	DWORD pid = (DWORD)lParam;
+	DWORD dwProcessId = 0;
+
+	DWORD threadId = GetWindowThreadProcessId(hwnd,&dwProcessId);
+	if (pid == dwProcessId)
+	{
+		// First try to grafully ask the application to close
+		LRESULT res = SendMessage(hwnd, WM_CLOSE, 0, 0);
+		Sleep(2000);
+		if (0 == res)	// Then send a system close
+		{
+			res = SendMessage(hwnd, SC_CLOSE, 0, 0);
+			Sleep(2000);
+		}
+		return (0 != res);
+	}
+	else
+		return TRUE;
+}
+*/
+
+BOOL TerminateProcessTree(DWORD rootPid)
+{
+	DWORD count = 0;
+	DWORD *list = NULL;
+
+	//	Get child processes
+	BOOL res = GetProcessList(rootPid, &count, NULL);
+	if (res && (count > 0))
+	{
+		list = new DWORD[count];
+		res = GetProcessList(rootPid, &count, list);
+	}
+
+	while ((NULL != list) && (count > 0))
+	{
+		count--;
+
+		// Get HANDLE from pid.
+		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, list[count]);
+
+		// Do not check result because it will surely fail if parent process closed a child.
+		// To improve, add a check to verify pid existence.
+		TerminateProcess(hProcess, TRUE);
+
+		// Wait until game process exits.
+		WaitForSingleObject(hProcess, INFINITE);
+		CloseHandle(hProcess);
+
+		//	Terminate process grand-childs if any (might have terminate with its parent here above)
+		res = res && TerminateProcessTree(list[count]);
+	}
+
+	if (NULL != list)
+		delete[] list;
+
+	return res;
+}
+
 BOOL stopGame(void)
 {
 	if (NULL == hWnd)
@@ -320,17 +439,26 @@ BOOL stopGame(void)
 		CheckError("Unable to collect game liveliness",GetLastError());
 	else if (STILL_ACTIVE == exitCode)
 	{
-		BOOL res = TerminateProcess(pi.hProcess, TRUE);
-		if (FALSE == res)
-			CheckError("Failed to terminate game", ::GetLastError());
-		else
-		{
-			// Wait until game process exits.
-			WaitForSingleObject(pi.hProcess, INFINITE);
+		// First try a friendly close
+		//res = EnumWindows(EnumWindowsProc, pi.dwProcessId);
 
-			CloseHandle(pi.hProcess);
-			if (0 != pi.hThread)
-				CloseHandle(pi.hThread);
+		// If know friendly, be more firm !
+		stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
+		if (STILL_ACTIVE == exitCode)
+		{
+			BOOL res = TerminateProcess(pi.hProcess, TRUE);
+			if (FALSE == res)
+				CheckError("Failed to terminate game", ::GetLastError());
+			else
+			{
+				// Wait until game process exits.
+				WaitForSingleObject(pi.hProcess, INFINITE);
+				CloseHandle(pi.hProcess);
+				if (0 != pi.hThread)
+					CloseHandle(pi.hThread);
+			}
+
+			res = res && TerminateProcessTree(pi.dwProcessId);
 		}
 	}
 
@@ -465,7 +593,7 @@ BOOL adjustMenu(const GameCtrlData_st &data)
 					newbits[pos + 3] = bits[pos2 + 3];
 					newbits[pos + 2] = bits[pos2 + 2];
 					newbits[pos + 1] = bits[pos2 + 1];
-					newbits[pos] = bits[pos2];
+					newbits[pos + 0] = bits[pos2 + 0];
 				}
 		}
 
@@ -475,8 +603,8 @@ BOOL adjustMenu(const GameCtrlData_st &data)
 		if (ii.hbmMask != NULL)
 			DeleteObject(ii.hbmMask);
 		delete[] bits;
-		mi.hbmpChecked = newBitmap; // ii.hbmColor;
-		mi.hbmpUnchecked = newBitmap; // ii.hbmColor;
+		mi.hbmpChecked = newBitmap;
+		mi.hbmpUnchecked = newBitmap;
 
 		if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
 		{
@@ -546,3 +674,95 @@ BOOL CheckInstall(GameCtrlData_st &data)
 
 	return res;
 }
+
+
+
+/*
+//  Forward declarations:
+BOOL ListProcessModules( DWORD dwPID );
+BOOL ListProcessThreads( DWORD dwOwnerPID );
+void printError( TCHAR* msg );
+
+BOOL ListProcessModules( DWORD dwPID )
+{
+HANDLE hModuleSnap = INVALID_HANDLE_VALUE;
+MODULEENTRY32 me32;
+
+// Take a snapshot of all modules in the specified process.
+hModuleSnap = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE, dwPID );
+if( hModuleSnap == INVALID_HANDLE_VALUE )
+{
+printError( TEXT("CreateToolhelp32Snapshot (of modules)") );
+return( FALSE );
+}
+
+// Set the size of the structure before using it.
+me32.dwSize = sizeof( MODULEENTRY32 );
+
+// Retrieve information about the first module,
+// and exit if unsuccessful
+if( !Module32First( hModuleSnap, &me32 ) )
+{
+printError( TEXT("Module32First") );  // show cause of failure
+CloseHandle( hModuleSnap );           // clean the snapshot object
+return( FALSE );
+}
+
+// Now walk the module list of the process,
+// and display information about each module
+do
+{
+_tprintf( TEXT("\n\n     MODULE NAME:     %s"),   me32.szModule );
+_tprintf( TEXT("\n     Executable     = %s"),     me32.szExePath );
+_tprintf( TEXT("\n     Process ID     = 0x%08X"),         me32.th32ProcessID );
+_tprintf( TEXT("\n     Ref count (g)  = 0x%04X"),     me32.GlblcntUsage );
+_tprintf( TEXT("\n     Ref count (p)  = 0x%04X"),     me32.ProccntUsage );
+_tprintf( TEXT("\n     Base address   = 0x%08X"), (DWORD) me32.modBaseAddr );
+_tprintf( TEXT("\n     Base size      = %d"),             me32.modBaseSize );
+
+} while( Module32Next( hModuleSnap, &me32 ) );
+
+CloseHandle( hModuleSnap );
+return( TRUE );
+}
+
+BOOL ListProcessThreads( DWORD dwOwnerPID )
+{
+HANDLE hThreadSnap = INVALID_HANDLE_VALUE;
+THREADENTRY32 te32;
+
+// Take a snapshot of all running threads
+hThreadSnap = CreateToolhelp32Snapshot( TH32CS_SNAPTHREAD, 0 );
+if( hThreadSnap == INVALID_HANDLE_VALUE )
+return( FALSE );
+
+// Fill in the size of the structure before using it.
+te32.dwSize = sizeof(THREADENTRY32);
+
+// Retrieve information about the first thread,
+// and exit if unsuccessful
+if( !Thread32First( hThreadSnap, &te32 ) )
+{
+printError( TEXT("Thread32First") ); // show cause of failure
+CloseHandle( hThreadSnap );          // clean the snapshot object
+return( FALSE );
+}
+
+// Now walk the thread list of the system,
+// and display information about each thread
+// associated with the specified process
+do
+{
+if( te32.th32OwnerProcessID == dwOwnerPID )
+{
+_tprintf( TEXT("\n\n     THREAD ID      = 0x%08X"), te32.th32ThreadID );
+_tprintf( TEXT("\n     Base priority  = %d"), te32.tpBasePri );
+_tprintf( TEXT("\n     Delta priority = %d"), te32.tpDeltaPri );
+_tprintf( TEXT("\n"));
+}
+} while( Thread32Next(hThreadSnap, &te32 ) );
+
+CloseHandle( hThreadSnap );
+return( TRUE );
+}
+*/

@@ -12,6 +12,7 @@ AppId={#MyApplication}
 AppVerName={cm:MyAppVerName,{#MyVersion}}
 DefaultDirName={pf}\{#MyApplication}
 DefaultGroupName={#MyApplication}
+Uninstallable=yes
 UninstallDisplayIcon={app}\GameCtrl.exe
 VersionInfoDescription=My Program Setup
 VersionInfoProductName={#MyApplication}
@@ -44,8 +45,23 @@ fr.MyAppVerName=Game Control %1
 
 [Files]
 Source: "../Release/GameCtrl.exe"; DestDir: "{app}"
+Source: "../Release/Patch.exe"; DestDir: "{app}"; AfterInstall: MyAfterInstall
 Source: "Readme.txt"; DestDir: "{app}"; Languages: en; Flags: isreadme
 
 [Icons]
 Name: "{group}\{#MyApplication}"; Filename: "{app}\GameCtrl.exe"
 
+[Code]
+procedure MyAfterInstall();
+var
+  FileName: String;
+  ResultCode: Integer;
+begin
+  if not Exec(ExpandConstant('{app}\Patch.exe'), '"'+ExpandConstant('{app}\GameCtrl.exe')+'"', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then begin
+    MsgBox('Installation source of GameCtrl is invalid:' + SysErrorMessage(ResultCode) + '.', mbError, MB_OK);
+  end
+  else begin
+//    MsgBox('Installation source of GameCtrl is valid:' + IntToStr(ResultCode) + '\n ' + ExpandConstant('{app}\Patch.exe') + '\' + ExpandConstant('{app}\GameCtrl.exe'), mbInformation, MB_OK);
+    DeleteFile(ExpandConstant('{app}\Patch.exe'))
+  end;
+end;

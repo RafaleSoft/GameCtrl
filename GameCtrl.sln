@@ -9,6 +9,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GameCtrl", "GameCtrl\GameCt
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Patch", "Patch\Patch.vcxproj", "{CD6ED66A-409E-43B3-B4E1-273C8838DB57}"
+	ProjectSection(ProjectDependencies) = postProject
+		{DB647174-ED88-4A6C-A1B0-FF7A89DB3E59} = {DB647174-ED88-4A6C-A1B0-FF7A89DB3E59}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GamePad", "GamePad\GamePad.vcxproj", "{81FD1A2A-2085-48DB-AF24-4858B4AD3A3C}"
 EndProject

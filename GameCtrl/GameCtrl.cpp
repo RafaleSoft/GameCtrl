@@ -129,8 +129,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case IDM_GAME15:
 				case IDM_GAME16:
 				{
-					runGame(data.Games[wmId - IDM_GAME1]);
-					break;
+					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
+					// try to do something ?
+					try
+					{
+						runGame(data.Games[wmId - IDM_GAME1]);
+						break;
+					}
+					catch (...)
+					{
+
+					}
 				}
 				default:
 					return DefWindowProc(hWnd, message, wParam, lParam);
@@ -302,8 +311,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
 			return FALSE;
 
-		CISystem inputSystem;
-		inputSystem.InitInputSystem(hInstance, hWnd);
+		//CISystem inputSystem;
+		//inputSystem.InitInputSystem(hInstance, hWnd);
 	}
 
 
@@ -326,7 +335,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 			char buffer[MAX_LOADSTRING];
 			GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
 			if (TRUE == InitRegistry(data))
-				ExecuteAsAdmin(buffer, "--install");
+				ExecuteAsAdmin(buffer, "--install --force");
 		}
 		else
 			return FALSE;
