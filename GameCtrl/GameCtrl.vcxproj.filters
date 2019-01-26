@@ -44,6 +44,12 @@
     <ClCompile Include="Dialogs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Acl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Crypto.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GameCtrl.rc">
@@ -55,6 +61,12 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="GameCtrl.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="0_original.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="help.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

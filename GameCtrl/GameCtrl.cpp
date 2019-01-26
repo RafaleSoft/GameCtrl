@@ -4,84 +4,221 @@
 #include "stdafx.h"
 #include "GameCtrl.h"
 #include <stdio.h>
+#include <CommCtrl.h>
+#include "ISystem.h"
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE hInst;								// current instance
-TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
-HWND hWnd = 0;
+HINSTANCE	hInst;								// current instance
+HWND		hWnd = NULL;
 
-
-int CHRONO_DEFAULT = 140;
-int DAYS_DEFAULT = 7;
+static int SECONDS = 0;
+static const int CHRONO_DEFAULT = 140;
+static const int DAYS_DEFAULT = 7;
 UINT nIDEvent = 0;
 HFONT font = 0;
+HPEN pen_white = 0;
+HBRUSH	brush_white = 0;
+HBRUSH	brush_red = 0;
+HBRUSH current_brush = 0;
 
 GameCtrlData_st data = {	CHRONO_DEFAULT,
 							CHRONO_DEFAULT,
 							DAYS_DEFAULT,
 							{ 0, 0 },
-							1,
+							0,
 							NULL };
+GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
-
-// Forward declarations of functions included in this code module:
-ATOM				MyRegisterClass(HINSTANCE hInstance);
-BOOL				InitInstance(HINSTANCE, int);
-LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
-void				adjustGameTime(GameCtrlData_st &data);
 
 
 //
-//	Main entry point.
+//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
 //
-int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPTSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+//  PURPOSE:  Processes messages for the main window.
+//
+//  WM_COMMAND	- process the application menu
+//  WM_PAINT	- Paint the main window
+//  WM_DESTROY	- post a quit message and return
+//
+//
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
-
- 	// TODO: Place code here.
-	MSG msg;
-	HACCEL hAccelTable;
-
-	// Initialize global strings
-	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
-	MyRegisterClass(hInstance);
-
-	// Perform application initialization:
-	if (!InitInstance (hInstance, nCmdShow))
+	switch (message)
 	{
-		return FALSE;
-	}
-
-	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMECTRL));
-
-	// Main message loop:
-	while (GetMessage(&msg, NULL, 0, 0))
-	{
-		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		case WM_COMMAND:
 		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+			int wmId = LOWORD(wParam);
+			int wmEvent = HIWORD(wParam);
+			// Parse the menu selections:
+			switch (wmId)
+			{
+				case IDM_ABOUT:
+				{
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+					break;
+				}
+				case ID_CONFIG_TIMELIMITER:
+				{
+					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
+						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
+					else
+						Error(IDS_INVALIDUSER);
+					break;
+				}
+				case ID_CONFIG_GAMES:
+				{
+					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
+					break;
+				}
+				case ID_CONFIG_UNINSTALL:
+				{
+					HINSTANCE hInstance = GetModuleHandle(NULL);
+					TCHAR		szMessage[DEFAULT_BUFSIZE];
+					LoadString(hInstance, IDS_CONFIRMREMOVE, szMessage, DEFAULT_BUFSIZE);
+					
+					int yesno = MessageBox(hWnd, szMessage, "Désinstallation GameCtrl", MB_ICONASTERISK | MB_YESNO);
+					if (IDYES == yesno)
+					{
+						CleanRegistry();
+
+						for (long i = 0; i < data.NbGames; i++)
+						{
+							PSECURITY_DESCRIPTOR psec = GetFileDACL(data.Games[i]);
+							if (NULL != psec)
+							{
+								PACL newDacl = UnsetSecurity(psec);
+								if (NULL != newDacl)
+								{
+									if (FALSE == SetFileDACL(data.Games[i], psec, newDacl))
+										Error(IDS_GAMEUNHANDLED);
+								}
+							}
+						}
+
+						char buffer[MAX_LOADSTRING];
+						GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+						ExecuteAsAdmin(buffer, "--uninstall");
+
+						exit(-1);
+					}
+
+					break;
+				}
+				case IDM_EXIT:
+				{
+					// TODO : check game has been quit.
+					DestroyWindow(hWnd);
+					break;
+				}
+				case IDM_GAME1:
+				case IDM_GAME2:
+				case IDM_GAME3:
+				case IDM_GAME4:
+				case IDM_GAME5:
+				case IDM_GAME6:
+				case IDM_GAME7:
+				case IDM_GAME8:
+				case IDM_GAME9:
+				case IDM_GAME10:
+				case IDM_GAME11:
+				case IDM_GAME12:
+				case IDM_GAME13:
+				case IDM_GAME14:
+				case IDM_GAME15:
+				case IDM_GAME16:
+				{
+					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
+					// try to do something ?
+					try
+					{
+						runGame(data.Games[wmId - IDM_GAME1]);
+						break;
+					}
+					catch (...)
+					{
+
+					}
+				}
+				default:
+					return DefWindowProc(hWnd, message, wParam, lParam);
+			}
+			break;
+		}
+		case WM_TIMER:
+		{
+			// blink color for the last minute of gaming.
+			if (1 == data.CHRONO)
+			{
+				if (brush_red == current_brush)
+					current_brush = brush_white;
+				else
+					current_brush = brush_red;
+			}
+
+			SECONDS = SECONDS + 1;
+			if (SECONDS > 59)
+			{
+				SECONDS = 0;
+				data.CHRONO = data.CHRONO - 1;
+			}
+			//	Terminate current game if any when timer reaches 0
+			if (0 == data.CHRONO)
+				stopGame();
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
+		}
+		case WM_ERASEBKGND:
+		{
+			HDC hdc = (HDC)wParam;
+			SelectObject(hdc, pen_white);
+			SelectObject(hdc, current_brush);
+
+			RECT rect;
+			GetClientRect(hWnd, &rect);
+			Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+
+			break;
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hWnd, &ps);
+			
+			SelectObject(hdc, font);
+
+			int hour = data.CHRONO / 60;
+			int min = data.CHRONO - (hour * 60);
+			char text[8];
+			sprintf_s(text, "%02d:%02d", hour, min);
+			
+			if (current_brush == brush_red)
+				SetTextColor(hdc, RGB(255, 255, 255));
+			else
+				SetTextColor(hdc, RGB(0, 0, 0));
+			SetBkMode(hdc, TRANSPARENT);
+			TextOut(hdc, 10, 10, text, 5);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			//	Terminate current game if any,
+			stopGame();
+			//	Quit application.
+			PostQuitMessage(0);
+			break;
+		}
+		default:
+		{
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
 		}
 	}
-
-	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
-
-	SetRegistryVars(hWnd,data);
-
-	// Wait until game process exits if any.
-	stopGame(hWnd);
-
-	return (int) msg.wParam;
+	return 0;
 }
-
 
 
 //
@@ -89,7 +226,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 //
 //  PURPOSE: Registers the window class.
 //
-ATOM MyRegisterClass(HINSTANCE hInstance)
+ATOM MyRegisterClass(HINSTANCE hInstance, TCHAR *szWindowClass)
 {
 	WNDCLASSEX wcex;
 
@@ -122,126 +259,195 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-	hInst = hInstance; // Store instance handle in our global variable
+	TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
+	TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
 
+	// Initialize global strings
+	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
+	MyRegisterClass(hInstance, szWindowClass);
+
+	hInst = hInstance; // Store instance handle in our global variable
 	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
 					CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, NULL, NULL, hInstance, NULL);
 
 	if (!hWnd)
 	{
-		CheckError(hWnd, "Unable to create window", ::GetLastError());
+		CheckError("Impossible de créer la fenêtre principale de l'application:", ::GetLastError());
 		return FALSE;
 	}
-
-   
-	if (!GetRegistryVars(hWnd,data))
-		return FALSE;
 	else
-		adjustGameTime(data);
+	{
+		HICON admin = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_AUTHENTICATION));
+		ICONINFO ii;
+		GetIconInfo(admin, &ii);
+		HBITMAP hBitmapUnchecked = ii.hbmColor;
+		HBITMAP hBitmapChecked = ii.hbmColor;
 
+		HMENU menu = GetMenu(hWnd);
+		if (NULL == menu)
+			return FALSE;
+
+		HMENU config = GetSubMenu(menu, 1);
+		if (NULL == config)
+			return FALSE;
+
+		if (FALSE == SetMenuItemBitmaps(config, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
+			return FALSE;
+
+		HICON help = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_HELP));
+		GetIconInfo(help, &ii);
+		hBitmapUnchecked = ii.hbmColor;
+		hBitmapChecked = ii.hbmColor;
+
+		menu = GetMenu(hWnd);
+		if (NULL == menu)
+			return FALSE;
+
+		HMENU about = GetSubMenu(menu, 2);
+		if (NULL == about)
+			return FALSE;
+
+		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
+			return FALSE;
+
+		//CISystem inputSystem;
+		//inputSystem.InitInputSystem(hInstance, hWnd);
+	}
+
+
+	//DWORD dataSize = 16;
+	//initEncryption();
+	//unsigned char* cypher = encrypt((unsigned char*)"Test chiffrement", dataSize);
+	//unsigned char* text = decrypt(cypher, dataSize);
+	//closeEncryption();
+
+	//!	Collect application data from registry and compute next deadline.
+	//!	If game is not properly installed, do the necessary actions below.
+	if (FALSE == CheckInstall(data))
+	{
+		TCHAR		szMessage[DEFAULT_BUFSIZE];
+		LoadString(hInstance, IDS_NOTINSTALLED, szMessage, DEFAULT_BUFSIZE);
+		
+		int yesno = MessageBox(hWnd, szMessage, "Installation de GameCtrl", MB_ICONASTERISK | MB_YESNO);
+		if (IDYES == yesno)
+		{
+			char buffer[MAX_LOADSTRING];
+			GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
+			if (TRUE == InitRegistry(data))
+				ExecuteAsAdmin(buffer, "--install --force");
+		}
+		else
+			return FALSE;
+	}
+
+	
 	if (0 == data.CHRONO)
 	{
-		::MessageBox(hWnd, "Temps de jeu dépassé !", "Erreur", MB_OK);
+		Error(IDS_OUTOFTIME);
 		return FALSE;
 	}
 	
-	font = ::CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
-	::ShowCursor(TRUE);
+	pen_white = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
+	brush_white = CreateSolidBrush(RGB(255, 255, 255));
+	brush_red = CreateSolidBrush(RGB(255, 0, 0));
+	current_brush = brush_white;
+
+	font = CreateFont(72, 0, 0, 0, FW_BOLD, 0, 0, 0, ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
+	ShowCursor(TRUE);
 
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
 
-	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000 * 60, NULL))
+	if (0 == SetTimer(hWnd, (UINT_PTR)&nIDEvent, 1000, NULL))
 	{
-		CheckError(hWnd, "Error creating timer", ::GetLastError());
+		CheckError("Error creating timer", ::GetLastError());
 		return FALSE;
 	}
 
 	return TRUE;
 }
 
+
+
 //
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
+//	Main entry point.
 //
-//  PURPOSE:  Processes messages for the main window.
-//
-//  WM_COMMAND	- process the application menu
-//  WM_PAINT	- Paint the main window
-//  WM_DESTROY	- post a quit message and return
-//
-//
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
+					   _In_opt_ HINSTANCE hPrevInstance,
+					   _In_ LPTSTR    lpCmdLine,
+					   _In_ int       nCmdShow)
 {
-	int wmId, wmEvent;
-	PAINTSTRUCT ps;
-	HDC hdc;
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	switch (message)
+	INITCOMMONCONTROLSEX init;
+	init.dwSize = sizeof(INITCOMMONCONTROLSEX);
+	init.dwICC = ICC_STANDARD_CLASSES | ICC_LISTVIEW_CLASSES | ICC_LINK_CLASS;
+	InitCommonControlsEx(&init);
+	
+	if (FALSE == ParseCmdLine(lpCmdLine, options))
 	{
-		case WM_COMMAND:
-		{
-			wmId = LOWORD(wParam);
-			wmEvent = HIWORD(wParam);
-			// Parse the menu selections:
-			switch (wmId)
-			{
-				case IDM_ABOUT:
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-					break;
-				case ID_CONFIG_TIMELIMITER:
-					if ((INT_PTR)TRUE == DialogBox(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password))
-						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
-					else
-						MessageBox(hWnd, "Invalid username or password", "Error", MB_OK | MB_ICONERROR);
-					break;
-				case ID_CONFIG_GAMES:
-					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_GAMECTRL_DIALOG), hWnd, Games, (LPARAM)&data);
-					break;
-				case IDM_EXIT:
-					// TODO : check game has been quit.
-					DestroyWindow(hWnd);
-					break;
-				default:
-					return DefWindowProc(hWnd, message, wParam, lParam);
-			}
-			break;
-		}
-		case WM_TIMER:
-		{
-			data.CHRONO = data.CHRONO - 1;
-			//	Terminate current game if any when timer reaches 0
-			if (0 == data.CHRONO)
-				stopGame(hWnd);
-			::InvalidateRect(hWnd, NULL, TRUE);
-			break;
-		}
-		case WM_PAINT:
-		{
-			hdc = BeginPaint(hWnd, &ps);
-
-			::SelectObject(hdc, font);
-			int hour = data.CHRONO / 60;
-			int min = data.CHRONO - (hour * 60);
-			char text[8];
-			sprintf_s(text, "%02d:%02d", hour, min);
-			::TextOut(hdc, 10, 10, text, 5);
-
-			EndPaint(hWnd, &ps);
-			break;
-		}
-		case WM_DESTROY:
-		{
-			//	Terminate current game if any,
-			stopGame(hWnd);
-			//	Quit application.
-			PostQuitMessage(0);
-			break;
-		}
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
+		Error(IDS_USAGE);
+		return -1;
 	}
-	return 0;
-}
+	else
+	{
+		BOOL normalLaunch = FALSE;
+		BOOL res = TRUE;
+		if (options.doInstall)
+			res = Install(options.doForce);
+		else if (options.doUnInstall)
+			res = UnInstall(options.doForce);
+		else if (options.doVersion)
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+		else if (options.doUsage)
+			Info(IDS_USAGE);
+		else if (options.doReset)
+			Reset();
+		else	// No options : normal launch
+			normalLaunch = TRUE;
 
+		if (FALSE == normalLaunch)
+		{
+			if (FALSE == res)
+				return -1;
+			else
+				return 1;
+		}
+	}
+	
+	// Perform application initialization:
+	if (!InitInstance(hInstance, nCmdShow))
+		return FALSE;
+
+	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMECTRL));
+
+	// Main message loop:
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+
+	KillTimer(hWnd, (UINT_PTR)&nIDEvent);
+
+	//!	Save application data to registry.
+	SetRegistryVars(data);
+
+	// Wait until game process exits if any.
+	stopGame();
+
+	DeleteObject(pen_white);
+	DeleteObject(brush_white);
+	DeleteObject(brush_red);
+	DeleteObject(font);
+
+	return (int)msg.wParam;
+}
 
 
