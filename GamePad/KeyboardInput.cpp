@@ -6,7 +6,9 @@
 #include "ISystem.h"
 #include "KeyboardInput.h"
 
-const unsigned char DIK_to_VK_Map[0xE0] = 
+const unsigned int MAX_VK_KEYS = 0xe0;
+const unsigned int MAX_KEY_INDEX = 0xff;
+const unsigned char DIK_to_VK_Map[MAX_VK_KEYS] =
 {
 	0,
 	VK_ESCAPE,	//#define DIK_ESCAPE          0x01
@@ -242,10 +244,6 @@ CKeyboardInput::CKeyboardInput(CISystem *ISystem)
 {
 	if (CreateDevice(ISystem, DI8DEVTYPE_KEYBOARD))
 	{
-		m_capabilities.dwSize = sizeof(DIDEVCAPS);
-		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
-			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
-
 		if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIKeyboard))
 			MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
 
@@ -304,38 +302,42 @@ const std::string CKeyboardInput::GetTypeName() const
 		return CDeviceInput::GetTypeName();
 }
 
-LPCKEYBOARDSTATE CKeyboardInput::getKeyboardState()
+bool CKeyboardInput::FillDeviceBuffer(bool doNotify)
 {
-	HRESULT result;
+	if (NULL == m_lpDirectInputDevice)
+		return false;
 
-	result = m_lpDirectInputDevice->Acquire();
-	if ((result != DI_OK)&&(result != S_FALSE))
+	LPCKEYBOARDSTATE data = (LPCKEYBOARDSTATE)getDeviceState(sizeof(KEYBOARDSTATE), &m_keyboardState);
+	if (NULL != data)
 	{
-		MessageBox(NULL, "keyboard not acquired!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
+		DWORD key = 0;
+		while ((key < MAX_KEY_INDEX) && (m_keyboardState[key] == 0))
+			key++;
 
-	result = m_lpDirectInputDevice->Poll();
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Keyboard not polled!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
+		WORD K = 0;
+		while (key < MAX_KEY_INDEX)
+		{
+			K = ((WORD)getKeyboardData(key) << 8) + (WORD)key;
+			m_buffer.push_back(K);
+			while ((key < MAX_KEY_INDEX) && (m_keyboardState[key] == 0))
+				key++;
+		}
 
-	result = m_lpDirectInputDevice->GetDeviceState(sizeof(KEYBOARDSTATE),&m_keyboardState);
+		if (doNotify)
+		{
+			for (size_t i = 0; i < m_actions.size(); i++)
+				m_actions[i]->execute(0, K);
+		}
 
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Device state unavailable!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
+		return true;
 	}
 	else
-		return &m_keyboardState;
+		return false;
 }
 
 unsigned char CKeyboardInput::getKeyboardData(DWORD key)
 {
-	if ((key>=0) && (key<256))
+	if ((key >= 0) && (key < MAX_KEY_INDEX))
 	{
 		unsigned char k = m_keyboardState[key];
 		m_keyboardState[key] = 0;
@@ -348,13 +350,13 @@ unsigned char CKeyboardInput::getKeyboardData(DWORD key)
 DWORD CKeyboardInput::hasKeyboardData(DWORD next) const
 {
 	DWORD pos = next;
-	while ((pos<256) && (m_keyboardState[pos] == 0))
+	while ((pos < MAX_KEY_INDEX) && (m_keyboardState[pos] == 0))
 		pos++;
 
 	return pos;
 }
 
-WORD CKeyboardInput::readKeyboardBuffer(void)
+WORD CKeyboardInput::peekKeyboardBuffer(void)
 {
 	if (m_buffer.size() > 0)
 	{
@@ -369,7 +371,7 @@ WORD CKeyboardInput::readKeyboardBuffer(void)
 
 unsigned char CKeyboardInput::DIK_to_VK(unsigned char key) const
 {
-	if (key<0xe0)
+	if (key < MAX_VK_KEYS)
 		return DIK_to_VK_Map[key];
 	else
 		return 0;

@@ -31,6 +31,13 @@ struct GameCtrlOptions_st
 
 //	The one and only one main window.
 extern HWND hWnd;
+//	The main game window.
+extern HWND gameWnd;
+// The top level game windows
+extern HWND gameWnds[16];
+// The number of top level game windows
+extern size_t nbWnds;
+
 
 //	Utils interface
 wchar_t *toWchar(const char *text);
@@ -40,9 +47,10 @@ void	Info(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
 BOOL	CheckInstall(GameCtrlData_st &data);
 BOOL	runGame(const char *path);
+HWND	GetWindowGame(void);
 BOOL	stopGame(void);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
-BOOL	Install(BOOL force);
+BOOL	Install(BOOL force, GameCtrlData_st &data);
 BOOL	UnInstall(BOOL force);
 BOOL	Reset(void);
 
@@ -79,3 +87,7 @@ BOOL initEncryption();
 unsigned char* encrypt(const unsigned char* data, DWORD &dataSize);
 unsigned char* decrypt(const unsigned char* data, DWORD &dataSize);
 BOOL closeEncryption();
+
+//	GamePad helpers
+BOOL attachGamePad(HINSTANCE hInst);
+BOOL detachGamePad(void);

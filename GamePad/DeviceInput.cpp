@@ -11,8 +11,7 @@
 //////////////////////////////////////////////////////////////////////
 
 CDeviceInput::CDeviceInput()
-	:m_lpDirectInputDevice(NULL),
-	m_lpDeviceInstance(NULL)
+	:m_lpDirectInputDevice(NULL), m_lpDeviceInstance(NULL)
 {
 
 }
@@ -23,30 +22,24 @@ CDeviceInput::~CDeviceInput()
 		m_lpDirectInputDevice->Release();
 }
 
-const std::string CDeviceInput::GetName() const
-{
-	if (m_lpDeviceInstance != NULL)
-		return std::string(m_lpDeviceInstance->tszInstanceName);
-	else
-		return "";
-}
-
 bool CDeviceInput::CreateDevice(CISystem *ISystem, DWORD guid)
 {
 	if ((NULL == ISystem) || 
 		((DI8DEVTYPE_KEYBOARD != guid) &&
 		(DI8DEVTYPE_MOUSE != guid) &&
-		(DI8DEVTYPE_GAMEPAD != guid)))
+		(DI8DEVTYPE_GAMEPAD != guid) &&
+		(DI8DEVTYPE_JOYSTICK != guid)))
 	{
 		return false;
 	}
 
-	m_lpDeviceInstance = ISystem->GetGUIDInstance(guid);
+	m_lpDeviceInstance = ISystem->GetDInputInstance(guid);
+	if (NULL == m_lpDeviceInstance)
+		return false;
 	
-	LPDIRECTINPUTDEVICE8 lp = NULL;
-	HRESULT result = ISystem->getDirectInput()->CreateDevice(m_lpDeviceInstance->guidInstance,
-															&lp,
-															NULL);
+	HRESULT result = ISystem->getDirectInput()->CreateDevice(	m_lpDeviceInstance->guidInstance,
+																&m_lpDirectInputDevice,
+																NULL);
 	if (result != DI_OK)
 	{
 		if (result == DIERR_DEVICENOTREG)
@@ -66,11 +59,7 @@ bool CDeviceInput::CreateDevice(CISystem *ISystem, DWORD guid)
 	}
 	else
 	{
-		lp->QueryInterface(IID_IDirectInputDevice2, (void **)&m_lpDirectInputDevice);
-		lp->Release();
-
-		result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->getHWND(), 
-															DISCL_FOREGROUND | DISCL_EXCLUSIVE);
+		result = m_lpDirectInputDevice->SetCooperativeLevel(ISystem->getHWND(), DISCL_BACKGROUND | DISCL_EXCLUSIVE);
 
 		if (result == DIERR_INVALIDPARAM)
 		{
@@ -92,6 +81,14 @@ bool CDeviceInput::CreateDevice(CISystem *ISystem, DWORD guid)
 	}
 
 	return true;
+}
+
+const std::string CDeviceInput::GetName() const
+{
+	if (m_lpDeviceInstance != NULL)
+		return std::string(m_lpDeviceInstance->tszInstanceName);
+	else
+		return "";
 }
 
 const std::string CDeviceInput::GetProductName() const
@@ -121,33 +118,90 @@ const std::string CDeviceInput::GetTypeName() const
 	return dname;
 }
 
-/*
-bool CDeviceInput::SetEventNotification(CEvent *evt)
+
+bool CDeviceInput::SetEventNotification(HANDLE evt)
 {
-	HRESULT res = m_lpDirectInputDevice->SetEventNotification(HANDLE(*evt));
-
-	return ((res == DI_OK) || (DI_POLLEDDEVICE));
-}
-*/
-
-bool CDeviceInput::GetDeviceState(void)
-{
-	DWORD	nbData = MAX_DATA;
-
-	HRESULT res = 
-		m_lpDirectInputDevice->GetDeviceData(	sizeof(DIDEVICEOBJECTDATA),          
-												m_data,	&nbData, 0);
-
-	if (SUCCEEDED(res))
+	if (NULL != m_lpDeviceInstance)
 	{
-		if (nbData>0)
-		{
-			data = m_data[0].dwData;
-			return true;
-		}
-		else
-			return false;
+		HRESULT res = m_lpDirectInputDevice->SetEventNotification(evt);
+		bool set = ((res == DI_OK) || (res == DI_POLLEDDEVICE));
+		return set;
 	}
 	else
 		return false;
+}
+
+
+void* CDeviceInput::getDeviceState(size_t data_size, void* device_data)
+{
+	if (NULL == m_lpDirectInputDevice)
+		return NULL;
+
+	HRESULT result = m_lpDirectInputDevice->Acquire();
+	if (result != DI_OK)
+	{
+		//MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);
+		result = m_lpDirectInputDevice->Unacquire();
+		result = m_lpDirectInputDevice->Acquire();
+		if (result != DI_OK)
+			return NULL;
+	}
+
+	if (pollingRequired())
+	{
+		result = m_lpDirectInputDevice->Poll();
+		if ((DI_OK == result) || (DI_NOEFFECT == result))
+		{
+		}
+		else if (DIERR_INPUTLOST == result)
+		{
+			MessageBox(NULL, "Device Input lost!", "Erreur", MB_OK | MB_ICONERROR);
+			return NULL;
+		}
+		else if (DIERR_NOTACQUIRED == result)
+		{
+			MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);
+			return NULL;
+		}
+		else if (DIERR_NOTINITIALIZED == result)
+		{
+			MessageBox(NULL, "Device not initialized!", "Erreur", MB_OK | MB_ICONERROR);
+			return NULL;
+		}
+	}
+
+	memset(device_data, 0, data_size);
+	result = m_lpDirectInputDevice->GetDeviceState(data_size, device_data);
+
+	if (result != DI_OK)
+	{
+		if (DIERR_INPUTLOST == result)
+		{
+			//MessageBox(NULL, "Device input lost!", "Erreur", MB_OK | MB_ICONERROR);
+			return NULL;
+		}
+		else
+		{
+			MessageBox(NULL, "Device state unavailable!", "Erreur", MB_OK | MB_ICONERROR);
+			return NULL;
+		}
+	}
+
+	m_lpDirectInputDevice->Unacquire();
+	return device_data;
+}
+
+bool CDeviceInput::registerAction(CAction* action)
+{
+	if (NULL == action)
+		return false;
+
+	for (size_t i = 0; i < m_actions.size(); i++)
+	{
+		if (m_actions[i] == action)
+			return false;
+	}
+
+	m_actions.push_back(action);
+	return true;
 }

@@ -24,6 +24,7 @@ class GAMEPAD_API CISystem
 public:
 	typedef struct INPUTCOLLECTION_t
 	{
+		HANDLE				pollerEvt;
 		CKeyboardInput		*k;
 		CMouseInput			*m;
 		CControllerInput	*c;
@@ -48,15 +49,27 @@ public:
 	 */
 	void CloseInputSystem();
 
-
-	bool startPoller( CKeyboardInput *keyb, CMouseInput *mouse = NULL, CControllerInput *ctrl = NULL);
+	/*
+	 * Run a dedicated thread for device polling and execute actions.
+	 */
+	bool startPoller( CKeyboardInput *keyb = NULL, CMouseInput *mouse = NULL, CControllerInput *ctrl = NULL);
+	
+	/*
+	 * Stop the dedicated thread started here above.
+	 * Resources are not freed, only a thread is terminated.
+	 */
 	bool stopPoller(void);
 
 	/*
-	 * Returns the device isntance object for the given guid.
+	 * Returns the Direct Input Legacy device instance object for the given guid.
 	 */
-	LPCDIDEVICEINSTANCE GetGUIDInstance(DWORD guid) const;
+	LPCDIDEVICEINSTANCE GetDInputInstance(DWORD guid) const;
 
+	/*
+	* Returns the Direct Input Legacy device instance object for the given guid.
+	*/
+	LPCDIDEVICEINSTANCE GetXInputInstance(DWORD guid) const;
+	
 	/*
 	 * Returns the direct input interface.
 	 */
@@ -74,7 +87,8 @@ public:
 private:
 
 	LPDIRECTINPUT8	m_lpDirectInput;
-	std::vector<LPCDIDEVICEINSTANCE>	m_devInstances;
+	std::vector<LPCDIDEVICEINSTANCE>	m_devDInput;
+	std::vector<LPCDIDEVICEINSTANCE>	m_devXInput;
 	
 	HWND m_hWnd;
 	HANDLE m_closePollers;

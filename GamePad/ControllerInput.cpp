@@ -50,13 +50,6 @@ CControllerInput::CControllerInput(CISystem *ISystem)
 
 	if (CreateDevice(ISystem, DI8DEVTYPE_GAMEPAD))
 	{
-		m_capabilities.dwSize = sizeof(DIDEVCAPS);
-		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
-			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
-
-		if (m_capabilities.dwFlags & DIDC_FORCEFEEDBACK)
-			m_lpDirectInputDevice->EnumEffects(DIEnumEffectsProc,&m_effectInstances,DIEFT_ALL );
-
 		DIPROPDWORD property;
 		property.diph.dwSize = sizeof(DIPROPDWORD);
 		property.diph.dwHeaderSize = sizeof(DIPROPHEADER);
@@ -64,13 +57,20 @@ CControllerInput::CControllerInput(CISystem *ISystem)
 		property.diph.dwObj = 0;
 		property.dwData = DIPROPAUTOCENTER_OFF;
 
-		if (DI_OK != m_lpDirectInputDevice->SetProperty(DIPROP_AUTOCENTER,&(property.diph)))
-			MessageBox(NULL, "Unable to set device property", "Erreur", MB_OK | MB_ICONERROR);
+		HRESULT res = m_lpDirectInputDevice->SetProperty(DIPROP_AUTOCENTER, &(property.diph));
+		//if (DI_OK != res)
+		//	MessageBox(NULL, "Autocenter capability is not available", "Error", MB_OK | MB_ICONERROR);
 
-		if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIJoystick2))
+		res = m_lpDirectInputDevice->SetDataFormat(&c_dfDIJoystick2);
+		if (DI_OK != res)
 			MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
 
-		if (DI_OK != m_lpDirectInputDevice->EnumObjects(DIEnumDeviceObjectsProc,&m_objects,DIDFT_ALL))
+		res = m_lpDirectInputDevice->EnumEffects(&DIEnumEffectsProc, &m_effectInstances, DIEFT_ALL);
+		if (DI_OK != res)
+			MessageBox(NULL, "Failed to enumerate effects", "Erreur", MB_OK | MB_ICONERROR);
+
+		res = m_lpDirectInputDevice->EnumObjects(DIEnumDeviceObjectsProc, &m_objects, DIDFT_ALL);
+		if (DI_OK != res)
 			MessageBox(NULL, "Failed to read controller objects", "Erreur", MB_OK | MB_ICONERROR);
 		else
 		{
@@ -79,6 +79,8 @@ CControllerInput::CControllerInput(CISystem *ISystem)
 			m_periodicForce.axes = new DWORD[1];
 			m_periodicForce.direction = new LONG[1];
 		}
+
+		memset(&m_controllerState, 0, sizeof(DIJOYSTATE2));
 	}
 }
 
@@ -131,37 +133,39 @@ const std::string CControllerInput::GetTypeName() const
 		return CDeviceInput::GetTypeName();
 }
 
-LPCDIJOYSTATE2 CControllerInput::getControllerState()
+bool CControllerInput::getButtonState(uint32_t num_button) const
 {
-	if (m_lpDirectInputDevice == NULL)
-		return &m_controllerState;
+	if (NULL == m_lpDirectInputDevice)
+		return false;
+	else if (num_button > MAX_BUTTONS)
+		return false;
+	else	
+		return (m_controllerState.rgbButtons[num_button] != 0);
+}
 
-	HRESULT result = m_lpDirectInputDevice->Acquire();
-	if (result != DI_OK)
+bool CControllerInput::FillDeviceBuffer(bool doNotify)
+{
+	if (NULL == m_lpDirectInputDevice)
+		return false;
+
+	LPCDIJOYSTATE2 data = (LPCDIJOYSTATE2)getDeviceState(sizeof(DIJOYSTATE2), &m_controllerState);
+	if (data != NULL)
 	{
-		MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
-
-	result = m_lpDirectInputDevice->Poll();
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Device not polled!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
-
-	memset(&m_controllerState,0,sizeof(DIJOYSTATE2));
-	result = m_lpDirectInputDevice->GetDeviceState(sizeof(DIJOYSTATE2),&m_controllerState);
-	m_lpDirectInputDevice->Unacquire();
-
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Device state unavailable!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
+		if (doNotify)
+		{
+			for (size_t i = 0; i < m_actions.size(); i++)
+			{
+				for (size_t j = 0; j < MAX_BUTTONS; j++)
+					if (m_controllerState.rgbButtons[j] != 0)
+						m_actions[i]->execute(BUTTON, j);
+			}
+		}
+		return true;
 	}
 	else
-		return &m_controllerState;
+		return false;
 }
+
 
 bool CControllerInput::LoadEffects(EffectType effectType,bool unload)
 {

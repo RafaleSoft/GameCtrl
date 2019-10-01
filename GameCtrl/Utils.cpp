@@ -8,11 +8,14 @@
 #include <tlhelp32.h>
 
 //	Process startup info
-static STARTUPINFO si;
+static STARTUPINFOW siw;
 static PROCESS_INFORMATION	pi;
 static const char *ERREUR_STR = "Erreur";
 static const char *WARNING_STR = "Attention";
 static const char *INFO_STR = "Information";
+HWND gameWnd = NULL;
+HWND gameWnds[16] = { NULL };
+size_t nbWnds = 0;
 
 extern "C"
 {
@@ -123,12 +126,15 @@ BOOL Reset(void)
 	return TRUE;
 }
 
-BOOL Install(BOOL force)
+BOOL Install(BOOL force, GameCtrlData_st &data)
 {
 	BOOL res = TRUE;
 
 	if (TRUE == force)
+	{
 		res = UnInstall(force);
+		res = InitRegistry(data);
+	}
 
 	if (TRUE == res)
 		res = CreateUser(USER_NAME, PASSWORD);
@@ -253,6 +259,60 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 	return res;
 }
 
+BOOL GetModuleList(DWORD ppid, DWORD *count, DWORD *list)
+{
+	if (NULL != count)
+	{
+		// if list is null, the call is only requested to count child processes.
+		if (NULL == list)
+			*count = 0;
+	}
+	else
+		return FALSE;	// Invalid Parameter.
+
+	// Take a snapshot of all processes in the system.
+	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, ppid);
+	if (hProcessSnap == INVALID_HANDLE_VALUE)
+	{
+		DWORD err = GetLastError();
+		MessageBox(hWnd, "Impossible d'obtenir un snapshot système", ERREUR_STR, MB_OK | MB_ICONINFORMATION);
+		return(FALSE);
+	}
+
+	// Set the size of the structure before using it.
+	MODULEENTRY32 me32;
+	me32.dwSize = sizeof(MODULEENTRY32);
+
+	// Retrieve information about the first process,
+	// and exit if unsuccessful
+	if (!Module32First(hProcessSnap, &me32))
+	{
+		CheckError("Impossible d'obtenir le premier processus du snapshot système", GetLastError());
+		CloseHandle(hProcessSnap);          // clean the snapshot object
+		return(FALSE);
+	}
+
+	DWORD counted = 0;
+	// Now walk the snapshot of processes, and
+	// display information about each process in turn
+	do
+	{
+		if (ppid == me32.th32ProcessID)
+		{
+			if ((NULL != list) && (counted < *count))
+				list[counted] = me32.th32ProcessID;
+			counted++;
+		}
+	} while (Module32Next(hProcessSnap, &me32));
+
+	CloseHandle(hProcessSnap);
+
+	if (NULL == list)
+		*count = counted;
+
+	return(TRUE);
+}
+
 BOOL runGame(const char *path)
 {
 	if ((NULL == path) || (NULL == hWnd))
@@ -276,7 +336,6 @@ BOOL runGame(const char *path)
 	}
 
 	wchar_t	*gamePath = toWchar(path);
-	STARTUPINFOW siw;
 	memset(&siw, 0, sizeof(STARTUPINFOW));
 	siw.cb = sizeof(STARTUPINFO);
 	siw.lpDesktop = L""; // "winsta0\\default"; Why this does not work even if I add ACEs to Desktop & Winsta ?
@@ -294,12 +353,15 @@ BOOL runGame(const char *path)
 											&siw, &pi))
 	{
 		CheckError("Impossible de lancer le jeu", ::GetLastError());
+		gameWnd = NULL;	// just a precaution, in case the game exists by itself.
+		delete[] gamePath;
 		return FALSE;
 	}
 	else
 		// now the job starts
 		ResumeThread(pi.hThread);
 	
+	gameWnd = NULL;	// just a precaution, in case the game exists by itself.
 	delete[] gamePath;
 	return TRUE;
 }
@@ -359,9 +421,6 @@ BOOL GetProcessList(DWORD ppid, DWORD *count, DWORD *list)
 	return(TRUE);
 }
 
-/*
- * Not working with Bluestacks :-(
- *
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 {
 	DWORD pid = (DWORD)lParam;
@@ -370,20 +429,40 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	DWORD threadId = GetWindowThreadProcessId(hwnd,&dwProcessId);
 	if (pid == dwProcessId)
 	{
-		// First try to grafully ask the application to close
-		LRESULT res = SendMessage(hwnd, WM_CLOSE, 0, 0);
-		Sleep(2000);
-		if (0 == res)	// Then send a system close
-		{
-			res = SendMessage(hwnd, SC_CLOSE, 0, 0);
-			Sleep(2000);
-		}
-		return (0 != res);
+		LONG exstyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+		LONG style = GetWindowLong(hwnd, GWL_STYLE);
+		LONG parent = GetWindowLong(hwnd, GWL_HWNDPARENT);
+		LONG instance = GetWindowLong(hwnd, GWL_HINSTANCE);
+		WINDOWINFO pwi;
+		BOOL res = GetWindowInfo(hwnd,&pwi);
+		char caption[255];
+		int sz = GetWindowTextA(hwnd, caption,255);
+		
+		gameWnds[nbWnds++] = hwnd;
+
+		if ((NULL == parent) && ((WS_VISIBLE & style) == WS_VISIBLE))
+			gameWnd = hwnd;
 	}
-	else
-		return TRUE;
+		
+	return TRUE;
 }
-*/
+
+HWND GetWindowGame(void)
+{
+	if (NULL != gameWnd)
+		return gameWnd;
+
+	for (size_t i = 0; i < nbWnds; i++)
+		gameWnds[i] = NULL;
+	nbWnds = 0;
+
+	// First try to grafully ask the application to close
+	BOOL res = EnumWindows(EnumWindowsProc, pi.dwProcessId);
+	if ((FALSE == res) || (NULL == gameWnd))
+		return NULL;
+	else
+		return gameWnd;
+}
 
 BOOL TerminateProcessTree(DWORD rootPid)
 {
@@ -407,7 +486,7 @@ BOOL TerminateProcessTree(DWORD rootPid)
 
 		// Do not check result because it will surely fail if parent process closed a child.
 		// To improve, add a check to verify pid existence.
-		TerminateProcess(hProcess, TRUE);
+		TerminateProcess(hProcess, 1);
 
 		// Wait until game process exits.
 		WaitForSingleObject(hProcess, INFINITE);
@@ -439,19 +518,29 @@ BOOL stopGame(void)
 		CheckError("Unable to collect game liveliness",GetLastError());
 	else if (STILL_ACTIVE == exitCode)
 	{
-		// First try a friendly close
-		//res = EnumWindows(EnumWindowsProc, pi.dwProcessId);
+		// First try to grafully ask the application to close
+		if (NULL != GetWindowGame())
+		{
+			res = (0 != SendMessage(gameWnd, WM_CLOSE, 0, 0));
+			Sleep(500);
+			if (FALSE == res)	// Then send a system close
+			{
+				res = (0 != SendMessage(gameWnd, SC_CLOSE, 0, 0));
+				Sleep(500);
+			}
+		}
 
-		// If know friendly, be more firm !
+		// If not friendly, be more firm !
 		stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
 		if (STILL_ACTIVE == exitCode)
 		{
-			BOOL res = TerminateProcess(pi.hProcess, TRUE);
+			res = TerminateProcess(pi.hProcess, 1);
 			if (FALSE == res)
 				CheckError("Failed to terminate game", ::GetLastError());
 			else
 			{
 				// Wait until game process exits.
+				// TODO : prevent infinite wait here with a multiple attempt loop.
 				WaitForSingleObject(pi.hProcess, INFINITE);
 				CloseHandle(pi.hProcess);
 				if (0 != pi.hThread)
@@ -462,7 +551,9 @@ BOOL stopGame(void)
 		}
 	}
 
+	memset(&siw, 0, sizeof(STARTUPINFOW));
 	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+	gameWnd = NULL;
 
 	return res;
 }
@@ -484,7 +575,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 	{
 		SystemTime.wDay = 1;
 		SystemTime.wMonth = 1;
-		SystemTime.wYear = 2018;
+		SystemTime.wYear = 2019;
 		SystemTime.wHour = 0;
 		SystemTime.wMinute = 0;
 		SystemTime.wSecond = 0;
@@ -496,6 +587,12 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 			return FALSE;
 		}
 	}
+
+	// Next update time.
+	//if (FALSE == FileTimeToSystemTime(&data.NextUpdateTime, &SystemTime))
+	//{
+	//	CheckError("Impossible d'obtenir la date de reset:", GetLastError());
+	//}
 
 	// TODO: use modulo to satrt at 00:00,
 	// i.e. : 864000000000 ns
@@ -511,7 +608,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 		ULARGE_INTEGER delta;
 		delta.QuadPart = data.NbDaysToReinit * 24 * 60 * 60;
 		delta.QuadPart *= 1000 * 1000 * 10;	// in 100ns intervals.
-				
+
 		next.QuadPart = next.QuadPart + delta.QuadPart;
 		data.NextUpdateTime.dwHighDateTime = next.HighPart;
 		data.NextUpdateTime.dwLowDateTime = next.LowPart;

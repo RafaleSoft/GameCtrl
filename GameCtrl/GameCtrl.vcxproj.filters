@@ -50,6 +50,9 @@
     <ClCompile Include="Crypto.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="GamePad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GameCtrl.rc">

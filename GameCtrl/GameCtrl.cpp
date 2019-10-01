@@ -5,13 +5,13 @@
 #include "GameCtrl.h"
 #include <stdio.h>
 #include <CommCtrl.h>
-#include "ISystem.h"
+
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE	hInst;								// current instance
-HWND		hWnd = NULL;
+HINSTANCE	hInst;			// current instance
+HWND		hWnd = NULL;	// GameCtrl Window
 
 static int SECONDS = 0;
 static const int CHRONO_DEFAULT = 140;
@@ -108,7 +108,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 				case IDM_EXIT:
 				{
-					// TODO : check game has been quit.
+					// check game has been quit is done after wain event loop
 					DestroyWindow(hWnd);
 					break;
 				}
@@ -129,11 +129,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case IDM_GAME15:
 				case IDM_GAME16:
 				{
+					if (0 >= data.CHRONO)
+					{
+						Error(IDS_OUTOFTIME);
+						break;
+					}
 					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
 					// try to do something ?
 					try
 					{
 						runGame(data.Games[wmId - IDM_GAME1]);
+						attachGamePad(hInst);
 						break;
 					}
 					catch (...)
@@ -164,8 +170,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				data.CHRONO = data.CHRONO - 1;
 			}
 			//	Terminate current game if any when timer reaches 0
-			if (0 == data.CHRONO)
+			if (0 >= data.CHRONO)
+			{
+				detachGamePad();
 				stopGame();
+			}
 			InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
@@ -203,9 +212,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			EndPaint(hWnd, &ps);
 			break;
 		}
+		case WM_KEYDOWN:
+		{
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
+		case WM_KEYUP:
+		{
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
+		case WM_CHAR:
+		{
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
 		case WM_DESTROY:
 		{
 			//	Terminate current game if any,
+			detachGamePad();
 			stopGame();
 			//	Quit application.
 			PostQuitMessage(0);
@@ -310,9 +335,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
 			return FALSE;
-
-		//CISystem inputSystem;
-		//inputSystem.InitInputSystem(hInstance, hWnd);
 	}
 
 
@@ -323,31 +345,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	//closeEncryption();
 
 	//!	Collect application data from registry and compute next deadline.
-	//!	If game is not properly installed, do the necessary actions below.
 	if (FALSE == CheckInstall(data))
 	{
-		TCHAR		szMessage[DEFAULT_BUFSIZE];
-		LoadString(hInstance, IDS_NOTINSTALLED, szMessage, DEFAULT_BUFSIZE);
-		
-		int yesno = MessageBox(hWnd, szMessage, "Installation de GameCtrl", MB_ICONASTERISK | MB_YESNO);
-		if (IDYES == yesno)
-		{
-			char buffer[MAX_LOADSTRING];
-			GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
-			if (TRUE == InitRegistry(data))
-				ExecuteAsAdmin(buffer, "--install --force");
-		}
-		else
-			return FALSE;
-	}
-
-	
-	if (0 == data.CHRONO)
-	{
-		Error(IDS_OUTOFTIME);
+		Error(IDS_NOTINSTALLED);
 		return FALSE;
 	}
-	
+		
 	pen_white = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
 	brush_white = CreateSolidBrush(RGB(255, 255, 255));
 	brush_red = CreateSolidBrush(RGB(255, 0, 0));
@@ -396,7 +399,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		BOOL normalLaunch = FALSE;
 		BOOL res = TRUE;
 		if (options.doInstall)
-			res = Install(options.doForce);
+			res = Install(options.doForce, data);
 		else if (options.doUnInstall)
 			res = UnInstall(options.doForce);
 		else if (options.doVersion)
@@ -440,6 +443,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	SetRegistryVars(data);
 
 	// Wait until game process exits if any.
+	detachGamePad();
 	stopGame();
 
 	DeleteObject(pen_white);

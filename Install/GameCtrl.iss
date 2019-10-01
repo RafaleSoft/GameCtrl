@@ -4,7 +4,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING .ISS SCRIPT FILES!
 
 #define MyApplication "GameCtrl"
-#define MyVersion "1.0"
+#define MyVersion "1.1"
 
 [Setup]
 AppName={cm:MyAppName}
@@ -45,6 +45,7 @@ fr.MyAppVerName=Game Control %1
 
 [Files]
 Source: "../Release/GameCtrl.exe"; DestDir: "{app}"
+Source: "../Release/GamePad.dll"; DestDir: "{app}"
 Source: "../Release/Patch.exe"; DestDir: "{app}"; AfterInstall: MyAfterInstall
 Source: "Readme.txt"; DestDir: "{app}"; Languages: en; Flags: isreadme
 

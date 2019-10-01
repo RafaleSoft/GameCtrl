@@ -15,9 +15,6 @@
 
 class GAMEPAD_API CMouseInput : public CDeviceInput
 {
-protected:
-	DIMOUSESTATE 	m_mouseState;
-
 public:
 	CMouseInput(CISystem *ISystem);
 	virtual ~CMouseInput();
@@ -29,7 +26,16 @@ public:
 	virtual const std::string GetTypeName() const;
 
 
-	LPCDIMOUSESTATE getMouseState();
+	/**
+	*	mouse specific methods.
+	*/
+
+	/**	Implements base class. */
+	bool FillDeviceBuffer(bool doNotify);
+
+
+private:
+	DIMOUSESTATE	m_mouseState;
 };
 
 #endif // !defined(AFX_MOUSEINPUT_H__20709D12_B11F_47E0_8B05_A3B9C1454EA3__INCLUDED_)

@@ -219,8 +219,8 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					{
 						HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
 						selectedGame = ListView_GetNextItem(lv, -1, LVNI_SELECTED);
-						HWND run = GetDlgItem(hDlg, IDOK);
-						EnableWindow(run, (selectedGame != -1));
+						HWND del = GetDlgItem(hDlg, IDDEL);
+						EnableWindow(del, (selectedGame != -1));
 						//MessageBox(NULL, pSaveData->Games[iSelect], "Item selected", MB_OK);
 					}
 					break;
@@ -237,10 +237,17 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				return (INT_PTR)TRUE;
 			}
 			//	User clicks run, run game and close window.
-			else if (LOWORD(wParam) == IDOK)
+			else if (LOWORD(wParam) == IDDEL)
 			{
-				runGame(pSaveData->Games[selectedGame]);
-				EndDialog(hDlg, LOWORD(wParam));
+				if (IDYES == MessageBox(hDlg, "Etes-vous sûr de vouloir supprimer ce jeu ?", "Supprimer un jeu", MB_YESNO))
+				{
+					HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+					ListView_DeleteItem(lv, selectedGame);
+
+					selectedGame = -1;
+					HWND del = GetDlgItem(hDlg, IDDEL);
+					EnableWindow(del, FALSE);
+				}
 				return (INT_PTR)TRUE;
 			}
 			else if (LOWORD(wParam) == IDADD)
