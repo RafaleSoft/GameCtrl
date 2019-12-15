@@ -52,6 +52,15 @@ Source: "Readme.txt"; DestDir: "{app}"; Languages: en; Flags: isreadme
 [Icons]
 Name: "{group}\{#MyApplication}"; Filename: "{app}\GameCtrl.exe"
 
+[Registry]
+Root: HKCU; Subkey: "Software\GameCtrl"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "CHRONO"; ValueData: 40
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "REINITCHRONO"; ValueData: 40
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBDAYSTOREINIT"; ValueData: 1
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "LOWDATETIME"; ValueData: "$cd0f8000"
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "HIGHDATETIME"; ValueData: "$01d592a2"
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBGAMES"; ValueData: 0
+
 [Code]
 procedure MyAfterInstall();
 var

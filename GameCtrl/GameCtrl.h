@@ -33,11 +33,7 @@ struct GameCtrlOptions_st
 extern HWND hWnd;
 //	The main game window.
 extern HWND gameWnd;
-// The top level game windows
-extern HWND gameWnds[16];
-// The number of top level game windows
-extern size_t nbWnds;
-
+extern HWND gamechild;
 
 //	Utils interface
 wchar_t *toWchar(const char *text);
@@ -47,7 +43,9 @@ void	Info(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
 BOOL	CheckInstall(GameCtrlData_st &data);
 BOOL	runGame(const char *path);
+BOOL	checkLiveliness(void);
 HWND	GetWindowGame(void);
+BOOL	UpdateProcessTree(DWORD rootPid);
 BOOL	stopGame(void);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
 BOOL	Install(BOOL force, GameCtrlData_st &data);
@@ -77,6 +75,7 @@ BOOL	GetRegistryVars(GameCtrlData_st &data);
 BOOL	SetRegistryVars(const GameCtrlData_st &data);
 
 // Dialog callbacks
+BOOL adjustMenu(const GameCtrlData_st &data);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Config(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Games(HWND, UINT, WPARAM, LPARAM);

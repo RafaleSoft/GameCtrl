@@ -9,6 +9,7 @@
 
 static CISystem *p_InputSystem = NULL;					// Controller manager
 static const uint32_t NB_RETRY = 5;
+static bool attached = false;
 
 class MyButton : public CDeviceInput::CAction
 {
@@ -35,56 +36,56 @@ bool MyButton::execute(CDeviceInput::EVENTID event,
 				DWORD car = 0;
 				switch (data)
 				{
-					case 1:
+					case 0:
 					{
 						key = 0x31;
 						oem = 0x00020001;
 						car = 0x26;
 						break;
 					}
-					case 2:
+					case 1:
 					{
 						key = 0x32;
 						oem = 0x00030001;
 						car = 0xe9;
 						break;
 					}
-					case 3:
+					case 2:
 					{
 						key = 0x33;
 						oem = 0x00040001;
 						car = 0x22;
 						break;
 					}
-					case 4:
+					case 3:
 					{
 						key = 0x34;
 						oem = 0x00050001;
 						car = 0x27;
 						break;
 					}
-					case 5:
+					case 4:
 					{
 						key = 0x35;
 						oem = 0x00060001;
 						car = 0x28;
 						break;
 					}
-					case 6:
+					case 5:
 					{
 						key = 0x36;
 						oem = 0x00070001;
 						car = 0x2d;
 						break;
 					}
-					case 7:
+					case 6:
 					{
 						key = 0x37;
 						oem = 0x00080001;
 						car = 0xe8;
 						break;
 					}
-					case 8:
+					case 7:
 					{
 						key = 0x38;
 						oem = 0x00090001;
@@ -93,17 +94,9 @@ bool MyButton::execute(CDeviceInput::EVENTID event,
 					}
 				}
 								
-				//res = SendMessage(HWND_BROADCAST, WM_KEYDOWN, key, oem);
-				//res = SendMessage(HWND_BROADCAST, WM_CHAR, car, oem);
-
-				for (size_t i = 0; i < nbWnds; i++)
-				{
-					for (DWORD k = 0; k < 255; k++)
-					{
-						res = PostMessage(gameWnds[i], WM_KEYDOWN, key, oem);
-						res = PostMessage(gameWnds[i], WM_CHAR, car, oem);
-					}
-				}
+				DWORD lTime = GetCurrentTime();
+				res = SendMessage(gamechild, WM_KEYDOWN, key, lTime);
+				res = SendMessage(gamechild, WM_KEYUP, key, lTime);
 			}
 			break;
 		default:
@@ -118,38 +111,43 @@ BOOL attachGamePad(HINSTANCE hInst)
 	if (NULL == hInst)
 		return false;
 
+	if (attached)
+		return TRUE;
+
 	if (NULL != p_InputSystem)
 	{
 		delete p_InputSystem;
 		p_InputSystem = NULL;
 	}
 	
-	uint32_t nb_retry = NB_RETRY;
-	while ((nb_retry > 0) && (NULL == GetWindowGame()))
-		Sleep(2000);
+	GetWindowGame();
 
-	if (NULL != gameWnd)
+	if ((NULL != gameWnd) && (NULL != gamechild))
 	{
 		p_InputSystem = new CISystem();
-		if (p_InputSystem->InitInputSystem(hInst, hWnd))
+		if (p_InputSystem->InitInputSystem(hInst, gamechild))
 		{
 			CControllerInput *controller = new CControllerInput(p_InputSystem);
 			controller->registerAction(new MyButton());
 
 			p_InputSystem->startPoller(NULL, NULL, controller);
+			attached = true;
+		}
+		else
+		{
+			Error(IDS_GAMEWND);
+			return FALSE;
 		}
 	}
 	else
-	{
-		Error(IDS_GAMEWND);
 		return FALSE;
-	}
 
 	return TRUE;
 }
 
 BOOL detachGamePad(void)
 { 
+	attached = false;
 	if (NULL == p_InputSystem)
 		return FALSE;
 

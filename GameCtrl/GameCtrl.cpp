@@ -139,7 +139,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					try
 					{
 						runGame(data.Games[wmId - IDM_GAME1]);
-						attachGamePad(hInst);
 						break;
 					}
 					catch (...)
@@ -175,7 +174,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				detachGamePad();
 				stopGame();
 			}
+
+			//	Redraw and upadte process management.
 			InvalidateRect(hWnd, NULL, TRUE);
+			UpdateProcessTree(0);
+			if (!checkLiveliness())
+			{
+				detachGamePad();
+				stopGame();
+			}
+			else
+				attachGamePad(hInst);
+
 			break;
 		}
 		case WM_ERASEBKGND:

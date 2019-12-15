@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <userenv.h>
 #include <tlhelp32.h>
+#include <set>
 
 //	Process startup info
 static STARTUPINFOW siw;
@@ -14,8 +15,8 @@ static const char *ERREUR_STR = "Erreur";
 static const char *WARNING_STR = "Attention";
 static const char *INFO_STR = "Information";
 HWND gameWnd = NULL;
-HWND gameWnds[16] = { NULL };
-size_t nbWnds = 0;
+HWND gamechild = NULL;
+
 
 extern "C"
 {
@@ -26,6 +27,8 @@ extern "C"
 }
 
 static const char *PATCH = "A,NCK+\"2=4JMAA";
+
+std::set<DWORD> process_list;
 
 wchar_t *toWchar(const char *text)
 {
@@ -259,60 +262,6 @@ BOOL ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options)
 	return res;
 }
 
-BOOL GetModuleList(DWORD ppid, DWORD *count, DWORD *list)
-{
-	if (NULL != count)
-	{
-		// if list is null, the call is only requested to count child processes.
-		if (NULL == list)
-			*count = 0;
-	}
-	else
-		return FALSE;	// Invalid Parameter.
-
-	// Take a snapshot of all processes in the system.
-	HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, ppid);
-	if (hProcessSnap == INVALID_HANDLE_VALUE)
-	{
-		DWORD err = GetLastError();
-		MessageBox(hWnd, "Impossible d'obtenir un snapshot système", ERREUR_STR, MB_OK | MB_ICONINFORMATION);
-		return(FALSE);
-	}
-
-	// Set the size of the structure before using it.
-	MODULEENTRY32 me32;
-	me32.dwSize = sizeof(MODULEENTRY32);
-
-	// Retrieve information about the first process,
-	// and exit if unsuccessful
-	if (!Module32First(hProcessSnap, &me32))
-	{
-		CheckError("Impossible d'obtenir le premier processus du snapshot système", GetLastError());
-		CloseHandle(hProcessSnap);          // clean the snapshot object
-		return(FALSE);
-	}
-
-	DWORD counted = 0;
-	// Now walk the snapshot of processes, and
-	// display information about each process in turn
-	do
-	{
-		if (ppid == me32.th32ProcessID)
-		{
-			if ((NULL != list) && (counted < *count))
-				list[counted] = me32.th32ProcessID;
-			counted++;
-		}
-	} while (Module32Next(hProcessSnap, &me32));
-
-	CloseHandle(hProcessSnap);
-
-	if (NULL == list)
-		*count = counted;
-
-	return(TRUE);
-}
-
 BOOL runGame(const char *path)
 {
 	if ((NULL == path) || (NULL == hWnd))
@@ -430,59 +379,117 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	if (pid == dwProcessId)
 	{
 		LONG exstyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-		LONG style = GetWindowLong(hwnd, GWL_STYLE);
-		LONG parent = GetWindowLong(hwnd, GWL_HWNDPARENT);
 		LONG instance = GetWindowLong(hwnd, GWL_HINSTANCE);
 		WINDOWINFO pwi;
 		BOOL res = GetWindowInfo(hwnd,&pwi);
 		char caption[255];
 		int sz = GetWindowTextA(hwnd, caption,255);
 		
-		gameWnds[nbWnds++] = hwnd;
-
+		LONG style = GetWindowLong(hwnd, GWL_STYLE);
+		LONG parent = GetWindowLong(hwnd, GWL_HWNDPARENT);
 		if ((NULL == parent) && ((WS_VISIBLE & style) == WS_VISIBLE))
+		{
 			gameWnd = hwnd;
+		}
 	}
 		
 	return TRUE;
 }
 
+BOOL CALLBACK EnumChildWindowsProc(HWND hwnd, LPARAM lParam)
+{
+	if (NULL != gamechild)
+		return TRUE;
+
+	LONG exstyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+	LONG style = GetWindowLong(hwnd, GWL_STYLE);
+	//LONG parent = GetWindowLong(hwnd, GWL_HWNDPARENT);
+	//LONG instance = GetWindowLong(hwnd, GWL_HINSTANCE);
+
+	WINDOWINFO pwi_parent;
+	BOOL res = GetWindowInfo(gameWnd, &pwi_parent);
+	WINDOWINFO pwi;
+	res = res && GetWindowInfo(hwnd, &pwi);
+
+	char caption[255];
+	int sz = GetWindowTextA(hwnd, caption, 255);
+
+	if ((pwi.rcClient.left >= pwi_parent.rcClient.left) &&
+		(pwi.rcClient.right <= pwi_parent.rcClient.right) &&
+		(pwi.rcClient.bottom <= pwi_parent.rcClient.bottom) &&
+		(pwi.rcClient.top >= pwi_parent.rcClient.top))
+	{
+		//if (!strcmp(caption, "_ctl.Window"))
+			gamechild = hwnd;
+	}
+
+	return TRUE;
+}
+
 HWND GetWindowGame(void)
 {
-	if (NULL != gameWnd)
+	if ((NULL != gameWnd) && (NULL != gamechild))
 		return gameWnd;
 
-	for (size_t i = 0; i < nbWnds; i++)
-		gameWnds[i] = NULL;
-	nbWnds = 0;
+	BOOL res = TRUE;
+	// First try to find the main game window
+	if (NULL == gameWnd)
+		res = EnumWindows(EnumWindowsProc, pi.dwProcessId);
 
-	// First try to grafully ask the application to close
-	BOOL res = EnumWindows(EnumWindowsProc, pi.dwProcessId);
 	if ((FALSE == res) || (NULL == gameWnd))
 		return NULL;
 	else
+	{
+		// then try to find any child window actually hosting the game display
+		if (NULL == gamechild)
+			res = EnumChildWindows(gameWnd, EnumChildWindowsProc, NULL);
+
 		return gameWnd;
+	}
+}
+
+BOOL UpdateProcessTree(DWORD rootPid)
+{
+	// then try to find any child window actually hosting the game display
+	BOOL e = FALSE;
+	if ((NULL != gameWnd) && (NULL == gamechild))
+		e = EnumChildWindows(gameWnd, EnumChildWindowsProc, NULL);
+	
+	if ((0 == rootPid) && (0 == pi.dwProcessId))
+		return FALSE;
+
+	DWORD pid = rootPid;
+	if (0 == pid)
+		pid = pi.dwProcessId;
+
+	//	Get child processes
+	DWORD count = 0;
+	DWORD *tmplist = NULL;
+	BOOL res = GetProcessList(pid, &count, NULL);
+	if (res && (count > 0))
+	{
+		tmplist = new DWORD[count];
+		res = GetProcessList(pid, &count, tmplist);
+	}
+
+	for (size_t i = 0; i < count; i++)
+		process_list.insert(tmplist[i]);
+	delete[] tmplist;
+
+	return res;
 }
 
 BOOL TerminateProcessTree(DWORD rootPid)
 {
-	DWORD count = 0;
-	DWORD *list = NULL;
+	BOOL res = UpdateProcessTree(rootPid);
 
-	//	Get child processes
-	BOOL res = GetProcessList(rootPid, &count, NULL);
-	if (res && (count > 0))
+	while (process_list.size() > 0)
 	{
-		list = new DWORD[count];
-		res = GetProcessList(rootPid, &count, list);
-	}
-
-	while ((NULL != list) && (count > 0))
-	{
-		count--;
+		//count--;
+		DWORD pid = *(process_list.rbegin());
 
 		// Get HANDLE from pid.
-		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, list[count]);
+		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
 
 		// Do not check result because it will surely fail if parent process closed a child.
 		// To improve, add a check to verify pid existence.
@@ -493,13 +500,28 @@ BOOL TerminateProcessTree(DWORD rootPid)
 		CloseHandle(hProcess);
 
 		//	Terminate process grand-childs if any (might have terminate with its parent here above)
-		res = res && TerminateProcessTree(list[count]);
+		process_list.erase(pid);
+		res = res && TerminateProcessTree(pid);
 	}
 
-	if (NULL != list)
-		delete[] list;
-
 	return res;
+}
+
+BOOL checkLiveliness(void)
+{
+	// process already terminated or not started.
+	if (0 == pi.hProcess)
+		return TRUE;
+
+	BOOL terminate = FALSE;
+	DWORD exitCode = 0;
+	BOOL stillActive = GetExitCodeProcess(pi.hProcess, &exitCode);
+	if (FALSE == stillActive)
+		terminate = FALSE;
+	else if (STILL_ACTIVE == exitCode)
+		terminate = TRUE;
+
+	return terminate;
 }
 
 BOOL stopGame(void)
@@ -511,6 +533,7 @@ BOOL stopGame(void)
 	if (0 == pi.hProcess)
 		return TRUE;
 
+	//	Collect all processes child of running game.
 	BOOL res = TRUE;
 	DWORD exitCode = 0;
 	BOOL stillActive = GetExitCodeProcess(pi.hProcess,&exitCode);
@@ -546,10 +569,11 @@ BOOL stopGame(void)
 				if (0 != pi.hThread)
 					CloseHandle(pi.hThread);
 			}
-
-			res = res && TerminateProcessTree(pi.dwProcessId);
 		}
 	}
+
+	res = res && TerminateProcessTree(pi.dwProcessId);
+	process_list.clear();
 
 	memset(&siw, 0, sizeof(STARTUPINFOW));
 	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
@@ -620,99 +644,6 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 }
 
 
-BOOL adjustMenu(const GameCtrlData_st &data)
-{
-	if (NULL == hWnd)
-		return FALSE;
-	HMENU menu = GetMenu(hWnd);
-	if (NULL == menu)
-		return FALSE;
-
-	HMENU file = GetSubMenu(menu, 0);
-	if (NULL == file)
-		return FALSE;
-
-	MENUITEMINFO mi;
-	memset(&mi, 0, sizeof(MENUITEMINFO));
-	mi.cbSize = sizeof(MENUITEMINFO);
-	mi.fMask = MIIM_TYPE;
-	mi.fType = MFT_SEPARATOR;
-
-	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
-	{
-		CheckError("Impossible d'ajouter une entrée au menu de l'application:", GetLastError());
-		return FALSE;
-	}
-
-	BOOL res = TRUE;
-	for (int i = 0; i < data.NbGames; i++)
-	{
-		HICON hh = ExtractIcon(0, data.Games[i], 0);
-		ICONINFO ii;
-		GetIconInfo(hh, &ii);
-
-		memset(&mi, 0, sizeof(MENUITEMINFO));
-		mi.cbSize = sizeof(MENUITEMINFO);
-		mi.fMask = MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS;
-		mi.fType = MFT_STRING;
-		const char *exe = strrchr(data.Games[i], '\\');
-		mi.dwTypeData = (LPSTR)(exe + 1);
-		mi.wID = IDM_GAME1 + i;
-
-		BITMAPINFO bi;
-		HDC hdc = GetDC(hWnd);
-		memset(&bi, 0, sizeof(BITMAPINFO));
-		bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-		GetDIBits(hdc, ii.hbmColor, 0, 0, NULL, &bi, DIB_RGB_COLORS);
-		int size = bi.bmiHeader.biBitCount / 8;
-		int dim = bi.bmiHeader.biWidth * bi.bmiHeader.biHeight;
-		bi.bmiHeader.biCompression = BI_RGB;	// Extract RGB.
-
-		unsigned char *bits = new unsigned char[dim*size];
-		memset(bits, 0, dim*size);
-		int nbread = GetDIBits(hdc, ii.hbmColor, 0, bi.bmiHeader.biHeight, bits, &bi, DIB_RGB_COLORS);
-
-		unsigned char *newbits = NULL;
-		HBITMAP newBitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, (void**)&newbits, NULL, 0);
-		if ((NULL == newBitmap) || (newbits == NULL))
-		{
-			CheckError("Impossible d'obtenir le bitmap de l'icône du jeu:", ::GetLastError());
-			return FALSE;
-		}
-		else
-		{
-			for (int j = 0; j < bi.bmiHeader.biHeight; j++)
-				for (int i = 0; i < bi.bmiHeader.biWidth; i++)
-				{
-					int pos = 4 * (bi.bmiHeader.biWidth - i - 1 + bi.bmiHeader.biWidth*j);
-					int pos2 = 4 * (i + j*bi.bmiHeader.biWidth);
-
-					newbits[pos + 3] = bits[pos2 + 3];
-					newbits[pos + 2] = bits[pos2 + 2];
-					newbits[pos + 1] = bits[pos2 + 1];
-					newbits[pos + 0] = bits[pos2 + 0];
-				}
-		}
-
-		DestroyIcon(hh);
-		if (ii.hbmColor != NULL)
-			DeleteObject(ii.hbmColor);
-		if (ii.hbmMask != NULL)
-			DeleteObject(ii.hbmMask);
-		delete[] bits;
-		mi.hbmpChecked = newBitmap;
-		mi.hbmpUnchecked = newBitmap;
-
-		if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
-		{
-			CheckError("Impossible d'ajouter une entrée de menu.", ::GetLastError());
-			res = FALSE;
-		}
-	}
-
-	return res;
-}
-
 BOOL CheckInstall(GameCtrlData_st &data)
 {
 	if (!GetRegistryVars(data))
@@ -773,7 +704,65 @@ BOOL CheckInstall(GameCtrlData_st &data)
 }
 
 
+/*
 
+
+BOOL GetModuleList(DWORD ppid, DWORD *count, DWORD *list)
+{
+if (NULL != count)
+{
+// if list is null, the call is only requested to count child processes.
+if (NULL == list)
+*count = 0;
+}
+else
+return FALSE;	// Invalid Parameter.
+
+// Take a snapshot of all processes in the system.
+HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, ppid);
+if (hProcessSnap == INVALID_HANDLE_VALUE)
+{
+DWORD err = GetLastError();
+MessageBox(hWnd, "Impossible d'obtenir un snapshot système", ERREUR_STR, MB_OK | MB_ICONINFORMATION);
+return(FALSE);
+}
+
+// Set the size of the structure before using it.
+MODULEENTRY32 me32;
+me32.dwSize = sizeof(MODULEENTRY32);
+
+// Retrieve information about the first process,
+// and exit if unsuccessful
+if (!Module32First(hProcessSnap, &me32))
+{
+CheckError("Impossible d'obtenir le premier processus du snapshot système", GetLastError());
+CloseHandle(hProcessSnap);          // clean the snapshot object
+return(FALSE);
+}
+
+DWORD counted = 0;
+// Now walk the snapshot of processes, and
+// display information about each process in turn
+do
+{
+if (ppid == me32.th32ProcessID)
+{
+if ((NULL != list) && (counted < *count))
+list[counted] = me32.th32ProcessID;
+counted++;
+}
+} while (Module32Next(hProcessSnap, &me32));
+
+CloseHandle(hProcessSnap);
+
+if (NULL == list)
+*count = counted;
+
+return(TRUE);
+}
+
+
+*/
 /*
 //  Forward declarations:
 BOOL ListProcessModules( DWORD dwPID );
