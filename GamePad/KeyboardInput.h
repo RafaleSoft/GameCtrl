@@ -37,16 +37,19 @@ public:
 	//!	Returns the state of key after FillDeviceBuffer is called.
 	unsigned char getKeyboardData(DWORD key);
 
-	/**	Each buffer data consist of:
+	/**
+	 *  Each buffer data consist of:
 	 *	a word where the high byte is the key status,
 	 *	and the low byte is the key.
 	 *	The returned key is removed from the buffer.
 	 */
 	WORD peekKeyboardBuffer(void);
 
-	//!	Returns the first position where the keyboard state contains data.
-	//!	FillDeviceBuffer must be called first.
-	//!	if the keyboard state is empty, the return value is 256
+	/**	
+	 * Returns the first position where the keyboard state contains data.
+	 * FillDeviceBuffer must be called first.
+	 * if the keyboard state is empty, the return value is 256
+	 */
 	DWORD hasKeyboardData(DWORD next = 0) const;
 
 	//! Translates a DirectInput Key to a Win32 SDK Virtual Key

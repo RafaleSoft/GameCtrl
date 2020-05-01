@@ -158,6 +158,24 @@ bool CControllerInput::FillDeviceBuffer(bool doNotify)
 				for (size_t j = 0; j < MAX_BUTTONS; j++)
 					if (m_controllerState.rgbButtons[j] != 0)
 						m_actions[i]->execute(BUTTON, j);
+				
+				//if (((m_controllerState.lRx != 0x7fff) && (m_controllerState.lRx != 0x8000)) ||
+				//	((m_controllerState.lRy != 0x7fff) && (m_controllerState.lRy != 0x8000)))
+				{
+					DWORD dx = (m_controllerState.lRx & 0x0000FFFF);
+					DWORD dy = (m_controllerState.lRy & 0x0000FFFF) << 16;
+					m_actions[i]->execute(RSTICK, dx | dy);
+				}
+				
+				//if ((m_controllerState.lX != 0x7fff) || (m_controllerState.lY != 0x7fff))
+				{
+					DWORD dx = (m_controllerState.lX & 0x0000FFFF);
+					DWORD dy = (m_controllerState.lY & 0x0000FFFF) << 16;
+					m_actions[i]->execute(LSTICK, dx | dy);
+				}
+
+				if (m_controllerState.rgdwPOV[0] != (DWORD)-1)
+					m_actions[i]->execute(DPAD, m_controllerState.rgdwPOV[0]);
 			}
 		}
 		return true;

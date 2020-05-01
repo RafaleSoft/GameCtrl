@@ -5,7 +5,8 @@
 #include "GameCtrl.h"
 #include <stdio.h>
 #include <CommCtrl.h>
-
+#include <io.h>
+#include <fcntl.h>
 
 #define MAX_LOADSTRING 100
 
@@ -31,7 +32,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							NULL };
 GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
-
+//FILE *log = NULL;
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -54,11 +55,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			// Parse the menu selections:
 			switch (wmId)
 			{
-				case IDM_ABOUT:
-				{
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-					break;
-				}
 				case ID_CONFIG_TIMELIMITER:
 				{
 					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
@@ -104,6 +100,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						exit(-1);
 					}
 
+					break;
+				}
+				case ID_CONTROLLER:
+				{
+					HMENU hmenu = GetMenu(hWnd);
+					//hmenu = GetSubMenu(hmenu, 1);
+					//BYTE bMenuItemID = GetMenuItemID(hmenu, 3);
+					UINT state = GetMenuState(hmenu, ID_CONTROLLER, MF_BYCOMMAND);
+					if (MF_CHECKED == state)
+					{
+						CheckMenuItem(hmenu, ID_CONTROLLER, MF_BYCOMMAND | MF_UNCHECKED);
+						detachGamePad();
+					}
+					else
+					{
+						CheckMenuItem(hmenu, ID_CONTROLLER, MF_BYCOMMAND | MF_CHECKED);
+						attachGamePad(hInst);
+					}
+
+					break;
+				}
+				case IDM_ABOUT:
+				{
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 					break;
 				}
 				case IDM_EXIT:
@@ -183,8 +203,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				detachGamePad();
 				stopGame();
 			}
-			else
-				attachGamePad(hInst);
 
 			break;
 		}
@@ -222,18 +240,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			EndPaint(hWnd, &ps);
 			break;
 		}
-		case WM_KEYDOWN:
+		case WM_MOUSEMOVE:
 		{
+//			fprintf(log, "WM_MOUSEMOVE - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
-		case WM_KEYUP:
+		case WM_LBUTTONDOWN:
 		{
+//			fprintf(log, "WM_LBUTTONDOWN - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
-		case WM_CHAR:
+		case WM_LBUTTONUP:
 		{
+//			fprintf(log, "WM_LBUTTONUP - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
@@ -248,6 +272,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		default:
 		{
+//			fprintf(log, "default: %d - %d\n", wParam, lParam);
+
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
@@ -296,6 +322,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
 	TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
+
+//	fopen_s(&log, "log.txt", "w+");
 
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
@@ -460,6 +488,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	DeleteObject(brush_white);
 	DeleteObject(brush_red);
 	DeleteObject(font);
+
+//	fclose(log);
 
 	return (int)msg.wParam;
 }

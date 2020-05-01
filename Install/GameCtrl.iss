@@ -4,7 +4,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING .ISS SCRIPT FILES!
 
 #define MyApplication "GameCtrl"
-#define MyVersion "1.1"
+#define MyVersion "1.2"
 
 [Setup]
 AppName={cm:MyAppName}
@@ -54,17 +54,16 @@ Name: "{group}\{#MyApplication}"; Filename: "{app}\GameCtrl.exe"
 
 [Registry]
 Root: HKCU; Subkey: "Software\GameCtrl"; Flags: uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "CHRONO"; ValueData: 40
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "REINITCHRONO"; ValueData: 40
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBDAYSTOREINIT"; ValueData: 1
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "LOWDATETIME"; ValueData: "$cd0f8000"
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "HIGHDATETIME"; ValueData: "$01d592a2"
-Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBGAMES"; ValueData: 0
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "CHRONO"; ValueData: 40; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "REINITCHRONO"; ValueData: 40; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBDAYSTOREINIT"; ValueData: 1; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "LOWDATETIME"; ValueData: "$cd0f8000"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "HIGHDATETIME"; ValueData: "$01d592a2"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GameCtrl"; ValueType: dword; ValueName: "NBGAMES"; ValueData: 0; Flags: uninsdeletekey
 
 [Code]
 procedure MyAfterInstall();
 var
-  FileName: String;
   ResultCode: Integer;
 begin
   if not Exec(ExpandConstant('{app}\Patch.exe'), '"'+ExpandConstant('{app}\GameCtrl.exe')+'"', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then begin

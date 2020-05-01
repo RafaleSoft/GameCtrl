@@ -22,7 +22,8 @@ public :
 	{
 		BUTTON,
 		TRIGGER,
-		STICK,
+		LSTICK,
+		RSTICK,
 		POV,
 		DPAD,
 		UNKNOWN

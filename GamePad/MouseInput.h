@@ -16,6 +16,15 @@
 class GAMEPAD_API CMouseInput : public CDeviceInput
 {
 public:
+	enum Event
+	{
+		BUTTON,
+		MOVE,
+		UNKNOWN
+	};
+
+
+public:
 	CMouseInput(CISystem *ISystem);
 	virtual ~CMouseInput();
 

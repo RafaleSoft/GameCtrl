@@ -134,11 +134,11 @@ BOOL Install(BOOL force, GameCtrlData_st &data)
 	BOOL res = TRUE;
 
 	if (TRUE == force)
-	{
 		res = UnInstall(force);
+		
+	if (TRUE == res)
 		res = InitRegistry(data);
-	}
-
+	
 	if (TRUE == res)
 		res = CreateUser(USER_NAME, PASSWORD);
 

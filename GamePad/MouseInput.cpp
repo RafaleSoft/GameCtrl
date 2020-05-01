@@ -69,7 +69,13 @@ bool CMouseInput::FillDeviceBuffer(bool doNotify)
 		if (doNotify)
 		{
 			for (size_t i = 0; i < m_actions.size(); i++)
-				m_actions[i]->execute(0,0);
+			{
+				for (size_t j = 0; j < 4; j++)
+					if (m_mouseState.rgbButtons[j] != 0)
+						m_actions[i]->execute(BUTTON, j);
+				if (m_mouseState.lX != 0)
+					m_actions[i]->execute(MOVE, m_mouseState.lX);
+			}
 		}
 		return true;
 	}

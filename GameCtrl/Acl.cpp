@@ -151,7 +151,7 @@ BOOL CreateUser(const char* UserName, const char* PassWord)
 	ui.usri1_name = uname;
 	ui.usri1_password = pwd;
 	ui.usri1_priv = USER_PRIV_USER;
-	ui.usri1_flags = UF_NORMAL_ACCOUNT | UF_SCRIPT;
+	ui.usri1_flags = UF_NORMAL_ACCOUNT | UF_SCRIPT | UF_DONT_EXPIRE_PASSWD;
 
 
 	DWORD dwError = -1;
@@ -212,6 +212,16 @@ BOOL CreateUser(const char* UserName, const char* PassWord)
 				char buffer[DEFAULT_BUFSIZE];
 				sprintf_s(buffer, "AddGroupMember: erreur %d", status);
 				MessageBox(NULL, buffer, "Erreur inconnue", MB_OK);
+			}
+
+			USER_MODALS_INFO_1003 age = { 0 };
+			status = NetUserModalsSet(	NULL,	// LPCWSTR  ServerName, NULL is local
+										1003,
+										(LPBYTE)&age,
+										NULL);
+			if (NERR_Success != status)
+			{
+
 			}
 
 			delete[] gname;

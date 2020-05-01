@@ -166,7 +166,7 @@ DWORD WINAPI Poller(LPVOID pParam)
 
 	while (WAIT_TIMEOUT == stop)
 	{
-		DWORD res = WaitForSingleObject(evt,1);
+		DWORD res = WaitForSingleObject(evt,5);
 		if (WAIT_OBJECT_0 == res)
 		{
 			// getDeviceData
