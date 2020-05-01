@@ -31,6 +31,9 @@ struct GameCtrlOptions_st
 
 //	The one and only one main window.
 extern HWND hWnd;
+//	The main game window.
+extern HWND gameWnd;
+extern HWND gamechild;
 
 //	Utils interface
 wchar_t *toWchar(const char *text);
@@ -40,9 +43,12 @@ void	Info(DWORD msg);
 void	CheckError(const char* msg, DWORD err);
 BOOL	CheckInstall(GameCtrlData_st &data);
 BOOL	runGame(const char *path);
+BOOL	checkLiveliness(void);
+HWND	GetWindowGame(void);
+BOOL	UpdateProcessTree(DWORD rootPid);
 BOOL	stopGame(void);
 BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
-BOOL	Install(BOOL force);
+BOOL	Install(BOOL force, GameCtrlData_st &data);
 BOOL	UnInstall(BOOL force);
 BOOL	Reset(void);
 
@@ -69,6 +75,7 @@ BOOL	GetRegistryVars(GameCtrlData_st &data);
 BOOL	SetRegistryVars(const GameCtrlData_st &data);
 
 // Dialog callbacks
+BOOL adjustMenu(const GameCtrlData_st &data);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Config(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	Games(HWND, UINT, WPARAM, LPARAM);
@@ -79,3 +86,7 @@ BOOL initEncryption();
 unsigned char* encrypt(const unsigned char* data, DWORD &dataSize);
 unsigned char* decrypt(const unsigned char* data, DWORD &dataSize);
 BOOL closeEncryption();
+
+//	GamePad helpers
+BOOL attachGamePad(HINSTANCE hInst);
+BOOL detachGamePad(void);

@@ -14,12 +14,10 @@ CMouseInput::CMouseInput(CISystem *ISystem)
 {
 	if (CreateDevice(ISystem, DI8DEVTYPE_MOUSE))
 	{
-		m_capabilities.dwSize = sizeof(DIDEVCAPS);
-		if (DI_OK != m_lpDirectInputDevice->GetCapabilities(&m_capabilities))
-			MessageBox(NULL, "Unable to read Device capabilities !", "Erreur", MB_OK | MB_ICONERROR);
-
 		if (DI_OK != m_lpDirectInputDevice->SetDataFormat(&c_dfDIMouse))
 			MessageBox(NULL, "Failed to set data format", "Erreur", MB_OK | MB_ICONERROR);
+
+		memset(&m_mouseState, 0, sizeof(DIMOUSESTATE));
 	}
 }
 
@@ -60,32 +58,28 @@ const std::string CMouseInput::GetTypeName() const
 		return CDeviceInput::GetTypeName();
 }
 
-LPCDIMOUSESTATE CMouseInput::getMouseState()
+bool CMouseInput::FillDeviceBuffer(bool doNotify)
 {
-	HRESULT result;
+	if (NULL == m_lpDirectInputDevice)
+		return false;
 
-	result = m_lpDirectInputDevice->Acquire();
-	if (result != DI_OK)
+	LPCDIMOUSESTATE data = (LPCDIMOUSESTATE)getDeviceState(sizeof(DIMOUSESTATE), &m_mouseState);
+	if (data != NULL)
 	{
-		MessageBox(NULL, "Device not acquired!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
-
-	result = m_lpDirectInputDevice->Poll();
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Device not polled!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
-
-	result = m_lpDirectInputDevice->GetDeviceState(sizeof(DIMOUSESTATE),&m_mouseState);
-	m_lpDirectInputDevice->Unacquire();
-
-	if (result != DI_OK)
-	{
-		MessageBox(NULL, "Device state unavailable!", "Erreur", MB_OK | MB_ICONERROR);
-		return NULL;
+		if (doNotify)
+		{
+			for (size_t i = 0; i < m_actions.size(); i++)
+			{
+				for (size_t j = 0; j < 4; j++)
+					if (m_mouseState.rgbButtons[j] != 0)
+						m_actions[i]->execute(BUTTON, j);
+				if (m_mouseState.lX != 0)
+					m_actions[i]->execute(MOVE, m_mouseState.lX);
+			}
+		}
+		return true;
 	}
 	else
-		return &m_mouseState;
+		return false;
 }
+

@@ -13,6 +13,8 @@
 
 #include <vector>
 #include <string>
+#include <stdint.h>
+
 
 #ifndef DIRECTINPUT_VERSION
 	#define DIRECTINPUT_VERSION 0x0800

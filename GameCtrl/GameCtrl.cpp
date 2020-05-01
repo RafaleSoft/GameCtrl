@@ -5,13 +5,14 @@
 #include "GameCtrl.h"
 #include <stdio.h>
 #include <CommCtrl.h>
-#include "ISystem.h"
+#include <io.h>
+#include <fcntl.h>
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE	hInst;								// current instance
-HWND		hWnd = NULL;
+HINSTANCE	hInst;			// current instance
+HWND		hWnd = NULL;	// GameCtrl Window
 
 static int SECONDS = 0;
 static const int CHRONO_DEFAULT = 140;
@@ -31,7 +32,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							NULL };
 GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
-
+//FILE *log = NULL;
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -54,11 +55,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			// Parse the menu selections:
 			switch (wmId)
 			{
-				case IDM_ABOUT:
-				{
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-					break;
-				}
 				case ID_CONFIG_TIMELIMITER:
 				{
 					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
@@ -106,9 +102,33 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					break;
 				}
+				case ID_CONTROLLER:
+				{
+					HMENU hmenu = GetMenu(hWnd);
+					//hmenu = GetSubMenu(hmenu, 1);
+					//BYTE bMenuItemID = GetMenuItemID(hmenu, 3);
+					UINT state = GetMenuState(hmenu, ID_CONTROLLER, MF_BYCOMMAND);
+					if (MF_CHECKED == state)
+					{
+						CheckMenuItem(hmenu, ID_CONTROLLER, MF_BYCOMMAND | MF_UNCHECKED);
+						detachGamePad();
+					}
+					else
+					{
+						CheckMenuItem(hmenu, ID_CONTROLLER, MF_BYCOMMAND | MF_CHECKED);
+						attachGamePad(hInst);
+					}
+
+					break;
+				}
+				case IDM_ABOUT:
+				{
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+					break;
+				}
 				case IDM_EXIT:
 				{
-					// TODO : check game has been quit.
+					// check game has been quit is done after wain event loop
 					DestroyWindow(hWnd);
 					break;
 				}
@@ -129,6 +149,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case IDM_GAME15:
 				case IDM_GAME16:
 				{
+					if (0 >= data.CHRONO)
+					{
+						Error(IDS_OUTOFTIME);
+						break;
+					}
 					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
 					// try to do something ?
 					try
@@ -164,9 +189,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				data.CHRONO = data.CHRONO - 1;
 			}
 			//	Terminate current game if any when timer reaches 0
-			if (0 == data.CHRONO)
+			if (0 >= data.CHRONO)
+			{
+				detachGamePad();
 				stopGame();
+			}
+
+			//	Redraw and upadte process management.
 			InvalidateRect(hWnd, NULL, TRUE);
+			UpdateProcessTree(0);
+			if (!checkLiveliness())
+			{
+				detachGamePad();
+				stopGame();
+			}
+
 			break;
 		}
 		case WM_ERASEBKGND:
@@ -203,9 +240,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			EndPaint(hWnd, &ps);
 			break;
 		}
+		case WM_MOUSEMOVE:
+		{
+//			fprintf(log, "WM_MOUSEMOVE - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
+		case WM_LBUTTONDOWN:
+		{
+//			fprintf(log, "WM_LBUTTONDOWN - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
+		case WM_LBUTTONUP:
+		{
+//			fprintf(log, "WM_LBUTTONUP - %d - (%d,%d)\n", wParam, LOWORD(lParam), HIWORD(lParam));
+
+			return DefWindowProc(hWnd, message, wParam, lParam);
+			break;
+		}
 		case WM_DESTROY:
 		{
 			//	Terminate current game if any,
+			detachGamePad();
 			stopGame();
 			//	Quit application.
 			PostQuitMessage(0);
@@ -213,6 +272,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		default:
 		{
+//			fprintf(log, "default: %d - %d\n", wParam, lParam);
+
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
@@ -262,6 +323,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	TCHAR		szTitle[MAX_LOADSTRING];			// The title bar text
 	TCHAR		szWindowClass[MAX_LOADSTRING];		// the main window class name
 
+//	fopen_s(&log, "log.txt", "w+");
+
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadString(hInstance, IDC_GAMECTRL, szWindowClass, MAX_LOADSTRING);
@@ -310,9 +373,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 		if (FALSE == SetMenuItemBitmaps(about, 0, MF_BYPOSITION, hBitmapUnchecked, hBitmapChecked))
 			return FALSE;
-
-		//CISystem inputSystem;
-		//inputSystem.InitInputSystem(hInstance, hWnd);
 	}
 
 
@@ -323,31 +383,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	//closeEncryption();
 
 	//!	Collect application data from registry and compute next deadline.
-	//!	If game is not properly installed, do the necessary actions below.
 	if (FALSE == CheckInstall(data))
 	{
-		TCHAR		szMessage[DEFAULT_BUFSIZE];
-		LoadString(hInstance, IDS_NOTINSTALLED, szMessage, DEFAULT_BUFSIZE);
-		
-		int yesno = MessageBox(hWnd, szMessage, "Installation de GameCtrl", MB_ICONASTERISK | MB_YESNO);
-		if (IDYES == yesno)
-		{
-			char buffer[MAX_LOADSTRING];
-			GetModuleFileName(NULL, buffer, MAX_LOADSTRING);
-			if (TRUE == InitRegistry(data))
-				ExecuteAsAdmin(buffer, "--install --force");
-		}
-		else
-			return FALSE;
-	}
-
-	
-	if (0 == data.CHRONO)
-	{
-		Error(IDS_OUTOFTIME);
+		Error(IDS_NOTINSTALLED);
 		return FALSE;
 	}
-	
+		
 	pen_white = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
 	brush_white = CreateSolidBrush(RGB(255, 255, 255));
 	brush_red = CreateSolidBrush(RGB(255, 0, 0));
@@ -396,7 +437,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		BOOL normalLaunch = FALSE;
 		BOOL res = TRUE;
 		if (options.doInstall)
-			res = Install(options.doForce);
+			res = Install(options.doForce, data);
 		else if (options.doUnInstall)
 			res = UnInstall(options.doForce);
 		else if (options.doVersion)
@@ -440,12 +481,15 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	SetRegistryVars(data);
 
 	// Wait until game process exits if any.
+	detachGamePad();
 	stopGame();
 
 	DeleteObject(pen_white);
 	DeleteObject(brush_white);
 	DeleteObject(brush_red);
 	DeleteObject(font);
+
+//	fclose(log);
 
 	return (int)msg.wParam;
 }

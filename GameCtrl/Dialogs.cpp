@@ -219,8 +219,8 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 					{
 						HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
 						selectedGame = ListView_GetNextItem(lv, -1, LVNI_SELECTED);
-						HWND run = GetDlgItem(hDlg, IDOK);
-						EnableWindow(run, (selectedGame != -1));
+						HWND del = GetDlgItem(hDlg, IDDEL);
+						EnableWindow(del, (selectedGame != -1));
 						//MessageBox(NULL, pSaveData->Games[iSelect], "Item selected", MB_OK);
 					}
 					break;
@@ -237,10 +237,17 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				return (INT_PTR)TRUE;
 			}
 			//	User clicks run, run game and close window.
-			else if (LOWORD(wParam) == IDOK)
+			else if (LOWORD(wParam) == IDDEL)
 			{
-				runGame(pSaveData->Games[selectedGame]);
-				EndDialog(hDlg, LOWORD(wParam));
+				if (IDYES == MessageBox(hDlg, "Etes-vous sûr de vouloir supprimer ce jeu ?", "Supprimer un jeu", MB_YESNO))
+				{
+					HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+					ListView_DeleteItem(lv, selectedGame);
+
+					selectedGame = -1;
+					HWND del = GetDlgItem(hDlg, IDDEL);
+					EnableWindow(del, FALSE);
+				}
 				return (INT_PTR)TRUE;
 			}
 			else if (LOWORD(wParam) == IDADD)
@@ -315,3 +322,96 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	return (INT_PTR)FALSE;
 }
 
+
+BOOL adjustMenu(const GameCtrlData_st &data)
+{
+	if (NULL == hWnd)
+		return FALSE;
+	HMENU menu = GetMenu(hWnd);
+	if (NULL == menu)
+		return FALSE;
+
+	HMENU file = GetSubMenu(menu, 0);
+	if (NULL == file)
+		return FALSE;
+
+	MENUITEMINFO mi;
+	memset(&mi, 0, sizeof(MENUITEMINFO));
+	mi.cbSize = sizeof(MENUITEMINFO);
+	mi.fMask = MIIM_TYPE;
+	mi.fType = MFT_SEPARATOR;
+
+	if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+	{
+		CheckError("Impossible d'ajouter une entrée au menu de l'application:", GetLastError());
+		return FALSE;
+	}
+
+	BOOL res = TRUE;
+	for (int i = 0; i < data.NbGames; i++)
+	{
+		HICON hh = ExtractIcon(0, data.Games[i], 0);
+		ICONINFO ii;
+		GetIconInfo(hh, &ii);
+
+		memset(&mi, 0, sizeof(MENUITEMINFO));
+		mi.cbSize = sizeof(MENUITEMINFO);
+		mi.fMask = MIIM_STRING | MIIM_ID | MIIM_CHECKMARKS;
+		mi.fType = MFT_STRING;
+		const char *exe = strrchr(data.Games[i], '\\');
+		mi.dwTypeData = (LPSTR)(exe + 1);
+		mi.wID = IDM_GAME1 + i;
+
+		BITMAPINFO bi;
+		HDC hdc = GetDC(hWnd);
+		memset(&bi, 0, sizeof(BITMAPINFO));
+		bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		GetDIBits(hdc, ii.hbmColor, 0, 0, NULL, &bi, DIB_RGB_COLORS);
+		int size = bi.bmiHeader.biBitCount / 8;
+		int dim = bi.bmiHeader.biWidth * bi.bmiHeader.biHeight;
+		bi.bmiHeader.biCompression = BI_RGB;	// Extract RGB.
+
+		unsigned char *bits = new unsigned char[dim*size];
+		memset(bits, 0, dim*size);
+		int nbread = GetDIBits(hdc, ii.hbmColor, 0, bi.bmiHeader.biHeight, bits, &bi, DIB_RGB_COLORS);
+
+		unsigned char *newbits = NULL;
+		HBITMAP newBitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, (void**)&newbits, NULL, 0);
+		if ((NULL == newBitmap) || (newbits == NULL))
+		{
+			CheckError("Impossible d'obtenir le bitmap de l'icône du jeu:", ::GetLastError());
+			return FALSE;
+		}
+		else
+		{
+			for (int j = 0; j < bi.bmiHeader.biHeight; j++)
+				for (int i = 0; i < bi.bmiHeader.biWidth; i++)
+				{
+					int pos = 4 * (bi.bmiHeader.biWidth - i - 1 + bi.bmiHeader.biWidth*j);
+					int pos2 = 4 * (i + j*bi.bmiHeader.biWidth);
+
+					newbits[pos + 3] = bits[pos2 + 3];
+					newbits[pos + 2] = bits[pos2 + 2];
+					newbits[pos + 1] = bits[pos2 + 1];
+					newbits[pos + 0] = bits[pos2 + 0];
+				}
+		}
+
+		DestroyIcon(hh);
+		if (ii.hbmColor != NULL)
+			DeleteObject(ii.hbmColor);
+		if (ii.hbmMask != NULL)
+			DeleteObject(ii.hbmMask);
+		delete[] bits;
+		mi.hbmpChecked = newBitmap;
+		mi.hbmpUnchecked = newBitmap;
+
+		if (FALSE == InsertMenuItem(file, 0, TRUE, &mi))
+		{
+			CheckError("Impossible d'ajouter une entrée de menu.", ::GetLastError());
+			res = FALSE;
+		}
+	}
+
+	return res;
+}

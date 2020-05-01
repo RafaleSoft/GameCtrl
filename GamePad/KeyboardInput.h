@@ -27,31 +27,40 @@ public:
 	virtual const std::string GetTypeName() const;
 
 
-	LPCKEYBOARDSTATE getKeyboardState();
+	/**
+	 *	Keyboard specific methods.
+	 */
+	
+	/**	Implements base class. */
+	bool FillDeviceBuffer(bool doNotify);
 
-	//	returns the state of key
+	//!	Returns the state of key after FillDeviceBuffer is called.
 	unsigned char getKeyboardData(DWORD key);
 
-	//	each buffer data consist of
-	//	a word where the high byte
-	//	is the key status
-	//	and the low byte is the
-	//	key
-	WORD readKeyboardBuffer(void);
+	/**
+	 *  Each buffer data consist of:
+	 *	a word where the high byte is the key status,
+	 *	and the low byte is the key.
+	 *	The returned key is removed from the buffer.
+	 */
+	WORD peekKeyboardBuffer(void);
 
-	//	returns the first position where
-	//	the keyboard state contains data.
-	//	if the keyboard state is empty,
-	//	the return value is 256
+	/**	
+	 * Returns the first position where the keyboard state contains data.
+	 * FillDeviceBuffer must be called first.
+	 * if the keyboard state is empty, the return value is 256
+	 */
 	DWORD hasKeyboardData(DWORD next = 0) const;
 
-	//	translates a DirectInput Key to
-	//	a Win32 SDK Virtual Key
+	//! Translates a DirectInput Key to a Win32 SDK Virtual Key
 	unsigned char DIK_to_VK(unsigned char key) const;
 
 
 protected:
-	
+	//! Returns the immediate keyboard state.
+	LPCKEYBOARDSTATE getKeyboardState(void);
+
+	//!	The keyboard current state.
 	KEYBOARDSTATE 	m_keyboardState;
 		
 	std::vector<WORD>	m_buffer;

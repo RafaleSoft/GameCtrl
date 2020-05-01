@@ -9,7 +9,7 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
-#include <vector>
+
 #include "DeviceInput.h"
 
 class CISystem;
@@ -18,6 +18,17 @@ class CISystem;
 class GAMEPAD_API CControllerInput : public CDeviceInput
 {
 public :
+	enum Event
+	{
+		BUTTON,
+		TRIGGER,
+		LSTICK,
+		RSTICK,
+		POV,
+		DPAD,
+		UNKNOWN
+	};
+
 	//	Force Feedback
 	enum EffectType
 	{	
@@ -50,6 +61,7 @@ public :
 		LONG				*direction;
 	} PERIODICFORCESETTINGS;
 
+	static const uint32_t MAX_BUTTONS = 128;
 
 public:
 	/** Constructor. */
@@ -64,12 +76,20 @@ public:
 	virtual const std::string GetTypeName() const;
 
 
+	/**
+	 *	gamepad specific methods.
+	 */
+
+	/**	Implements base class. */
+	bool FillDeviceBuffer(bool doNotify);
+
 	bool Configure() const
 	{
 		return (DI_OK == m_lpDirectInputDevice->RunControlPanel(NULL,0));
 	};
 	
-	LPCDIJOYSTATE2 getControllerState();
+	//! Return true if a button state is pressed.
+	bool getButtonState(uint32_t num_button) const;
 
 	//	Force feedback
 	bool LoadEffects(EffectType effectType,bool unload = false);
@@ -77,12 +97,11 @@ public:
 	std::string GetEffectName(EffectType effectType);
 
 
-protected:
+private:
+	//!	The controller current state.
 	DIJOYSTATE2	m_controllerState;
 
-
-private:
-	//	Controller objects
+	//!	Controller objects (buttons, axis, ...)
 	std::vector<LPDIDEVICEOBJECTINSTANCE>	m_objects;
 
 	CONSTANTFORCESETTINGS m_cstForce;
