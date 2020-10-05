@@ -6,13 +6,13 @@
 #include <stdio.h>
 
 static const char *KEY_NAME = TEXT("Software\\GameCtrl");
-
+static const HKEY KEY_ROOT = HKEY_LOCAL_MACHINE;
 
 BOOL CleanRegistry()
 {
 	HKEY hTestKey = 0;
 	REGSAM keySAM = DELETE | KEY_SET_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE;
-	LONG res = RegOpenKeyEx(HKEY_CURRENT_USER, KEY_NAME, 0, keySAM, &hTestKey);
+	LONG res = RegOpenKeyEx(KEY_ROOT, KEY_NAME, 0, keySAM, &hTestKey);
 
 	if (ERROR_SUCCESS == res)
 	{
@@ -20,7 +20,7 @@ BOOL CleanRegistry()
 		if (ERROR_SUCCESS == res)
 		{
 			RegCloseKey(hTestKey);
-			res = RegDeleteKey(HKEY_CURRENT_USER, KEY_NAME);
+			res = RegDeleteKey(KEY_ROOT, KEY_NAME);
 			if (ERROR_SUCCESS == res)
 				return TRUE;
 			else
@@ -48,7 +48,7 @@ BOOL InitRegistry(GameCtrlData_st &data)
 	REGSAM keySAM = KEY_WRITE;
 	DWORD dwDisposition = 0;
 
-	LONG res = RegCreateKeyEx(HKEY_CURRENT_USER,
+	LONG res = RegCreateKeyEx(KEY_ROOT,
 							  KEY_NAME, 0, NULL,
 							  REG_OPTION_NON_VOLATILE,
 							  KEY_WRITE,
@@ -108,7 +108,7 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 	HKEY hTestKey = 0;
 	LONG res = 0;
 
-	res = RegOpenKeyEx(HKEY_CURRENT_USER, KEY_NAME, 0, KEY_READ, &hTestKey);
+	res = RegOpenKeyEx(KEY_ROOT, KEY_NAME, 0, KEY_READ, &hTestKey);
 	
 	if (res == ERROR_SUCCESS)
 	{
@@ -173,7 +173,7 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 	HKEY hTestKey = 0;
 	LONG res = 0;
 
-	res = RegOpenKeyEx(HKEY_CURRENT_USER, KEY_NAME, 0, KEY_SET_VALUE, &hTestKey);
+	res = RegOpenKeyEx(KEY_ROOT, KEY_NAME, 0, KEY_SET_VALUE, &hTestKey);
 	if (res == ERROR_SUCCESS)
 	{
 		DWORD pvData = data.CHRONO;
