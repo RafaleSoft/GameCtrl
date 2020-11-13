@@ -28,6 +28,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							CHRONO_DEFAULT,
 							DAYS_DEFAULT,
 							{ 0, 0 },
+							{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 							0,
 							NULL };
 GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
@@ -57,10 +58,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				case ID_CONFIG_TIMELIMITER:
 				{
-					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
+// TODO: restore
+					//if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
 						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
-					else
-						Error(IDS_INVALIDUSER);
+					//else
+					//	Error(IDS_INVALIDUSER);
 					break;
 				}
 				case ID_CONFIG_GAMES:
@@ -154,8 +156,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						Error(IDS_OUTOFTIME);
 						break;
 					}
-					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
-					// try to do something ?
 					try
 					{
 						runGame(data.Games[wmId - IDM_GAME1]);
@@ -163,7 +163,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					}
 					catch (...)
 					{
-
+						//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
+						// try to do something: but what ?
 					}
 				}
 				default:

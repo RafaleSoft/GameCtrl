@@ -135,12 +135,12 @@ BOOL Install(BOOL force, GameCtrlData_st &data)
 
 	if (TRUE == force)
 		res = UnInstall(force);
-		
-	if (TRUE == res)
-		res = InitRegistry(data);
 	
 	if (TRUE == res)
 		res = CreateUser(USER_NAME, PASSWORD);
+
+	if (TRUE == res)
+		res = InitRegistry(data);
 
 	if (TRUE == res)
 		Info(IDS_INSTALL_SUCCEEDED);
@@ -582,6 +582,11 @@ BOOL stopGame(void)
 	return res;
 }
 
+BOOL checkTimeSlot(GameCtrlData_st &data)
+{
+	BOOL res = FALSE;
+	return res;
+}
 
 BOOL adjustGameTime(GameCtrlData_st &data)
 {
@@ -618,7 +623,7 @@ BOOL adjustGameTime(GameCtrlData_st &data)
 	//	CheckError("Impossible d'obtenir la date de reset:", GetLastError());
 	//}
 
-	// TODO: use modulo to satrt at 00:00,
+	// TODO: use modulo to start at 00:00,
 	// i.e. : 864000000000 ns
 
 	LONG cmp = CompareFileTime(&currentTime, &data.NextUpdateTime);
@@ -658,7 +663,6 @@ BOOL CheckInstall(GameCtrlData_st &data)
 	if (TRUE == res)
 		for (long i = 0; (TRUE == res) && (i < data.NbGames); i++)
 			res = res & CheckSecurity(data.Games[i]);
-
 
 #ifdef SHAREWARE
 	SYSTEMTIME SystemTime;

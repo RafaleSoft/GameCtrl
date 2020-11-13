@@ -4,7 +4,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING .ISS SCRIPT FILES!
 
 #define MyApplication "GameCtrl"
-#define MyVersion "1.3"
+#define MyVersion "1.3.1"
 
 [Setup]
 AppName={cm:MyAppName}

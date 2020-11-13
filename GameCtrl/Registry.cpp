@@ -48,11 +48,21 @@ BOOL InitRegistry(GameCtrlData_st &data)
 	REGSAM keySAM = KEY_WRITE;
 	DWORD dwDisposition = 0;
 
+	SECURITY_DESCRIPTOR psec;
+	SECURITY_ATTRIBUTES sec;
+	sec.nLength = sizeof(SECURITY_ATTRIBUTES);
+	sec.lpSecurityDescriptor = &psec;
+	sec.bInheritHandle = TRUE;
+
+	BOOL bres = InitializeSecurityDescriptor(&psec, SECURITY_DESCRIPTOR_REVISION);
+	PACL pacl = SetSecurity(&psec, KEY_ALL_ACCESS);
+	bres = SetSecurityDescriptorDacl(&psec, TRUE, pacl, FALSE);
+
 	LONG res = RegCreateKeyEx(KEY_ROOT,
 							  KEY_NAME, 0, NULL,
 							  REG_OPTION_NON_VOLATILE,
-							  KEY_WRITE,
-							  NULL,
+							  KEY_WRITE | KEY_READ,
+							  &sec,
 							  &hTestKey,
 							  &dwDisposition);
 	if (ERROR_SUCCESS == res)
@@ -108,7 +118,18 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 	HKEY hTestKey = 0;
 	LONG res = 0;
 
+	HANDLE token = NULL;
+	BOOL logon = LogonUser(USER_NAME, ".", PASSWORD, LOGON32_LOGON_INTERACTIVE /*LOGON32_LOGON_NETWORK*/, LOGON32_PROVIDER_DEFAULT, &token);
+	if (TRUE == logon)
+		logon = ImpersonateLoggedOnUser(token);	// TODO check impersonation result
+	else
+	{
+		CheckError("Impossible d'accéder aux données de GameCtrl", ERROR_ACCESS_DENIED);
+		return FALSE;
+	}
+
 	res = RegOpenKeyEx(KEY_ROOT, KEY_NAME, 0, KEY_READ, &hTestKey);
+	BOOL result = FALSE;
 	
 	if (res == ERROR_SUCCESS)
 	{
@@ -138,6 +159,7 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 
 		data.Games = new const char*[data.NbGames];
 
+		result = TRUE;
 		for (long i = 0; i < data.NbGames; i++)
 		{
 			char buffer[32];
@@ -151,19 +173,27 @@ BOOL GetRegistryVars(GameCtrlData_st &data)
 			else
 			{
 				CheckError("Impossible de lire le nom du jeu dans les données de GameCtrl", res);
-				RegCloseKey(hTestKey);
-				return FALSE;
+				result = FALSE;
 			}
 		}
-
-		RegCloseKey(hTestKey);
-		return TRUE;
+		
+		pcbData = 24 * sizeof(unsigned char);
+		LONG res = RegGetValue(hTestKey, NULL, "SLOTS", RRF_RT_REG_BINARY, &pdwType, (BYTE*)&data.HourSlots[0], &pcbData);
+		if (ERROR_SUCCESS != res)
+		{
+			CheckError("Impossible de lire les crénaux horaires", res);
+			result = FALSE;
+		}
+		
+		res = RegCloseKey(hTestKey);
 	}
 	else
-	{
 		CheckError("Impossible d'accéder aux données de GameCtrl", res);
-		return FALSE;
-	}
+
+	result = result && RevertToSelf();
+	result = result && CloseHandle(token);
+
+	return result;
 }
 
 
@@ -173,7 +203,19 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 	HKEY hTestKey = 0;
 	LONG res = 0;
 
+	HANDLE token = NULL;
+	BOOL logon = LogonUser(USER_NAME, ".", PASSWORD, LOGON32_LOGON_INTERACTIVE /*LOGON32_LOGON_NETWORK*/, LOGON32_PROVIDER_DEFAULT, &token);
+	if (TRUE == logon)
+		logon = ImpersonateLoggedOnUser(token);	// TODO check impersonation result
+	else
+	{
+		CheckError("Impossible d'accéder aux données de GameCtrl", ERROR_ACCESS_DENIED);
+		return FALSE;
+	}
+
 	res = RegOpenKeyEx(KEY_ROOT, KEY_NAME, 0, KEY_SET_VALUE, &hTestKey);
+	BOOL result = FALSE;
+
 	if (res == ERROR_SUCCESS)
 	{
 		DWORD pvData = data.CHRONO;
@@ -192,6 +234,7 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 		if (FALSE == WriteDWORD(hTestKey, "NBGAMES", data.NbGames))
 			return FALSE;
 		
+		result = TRUE;
 		for (long i = 0; i < data.NbGames; i++)
 		{
 			const char* game = data.Games[i];
@@ -201,19 +244,26 @@ BOOL SetRegistryVars(const GameCtrlData_st &data)
 			if (ERROR_SUCCESS != res)
 			{
 				CheckError("Impossible d'enregistrer le nom du jeu dans les données de GameCtrl", res);
-				RegCloseKey(hTestKey);
-				return FALSE;
+				result = FALSE;
 			}
 		}
 
-		RegCloseKey(hTestKey);
-		return TRUE;
+		LONG res = RegSetValueEx(hTestKey, "SLOTS", 0, REG_BINARY, (BYTE*)&data.HourSlots[0], 24*sizeof(unsigned char));
+		if (ERROR_SUCCESS != res)
+		{
+			CheckError("Impossible d'enregistrer les crénaux horaires", res);
+			result = FALSE;
+		}
+
+		res = RegCloseKey(hTestKey);
 	}
 	else
-	{
 		CheckError("Impossible de sauvegarder les données de GameCtrl", res);
-		return FALSE;
-	}
+
+	result = result && RevertToSelf();
+	result = result && CloseHandle(token);
+
+	return result;
 }
 
 

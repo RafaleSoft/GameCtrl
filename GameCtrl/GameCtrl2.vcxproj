@@ -113,6 +113,7 @@
   <ItemGroup>
     <Image Include="0_original.ico" />
     <Image Include="GameCtrl.ico" />
+    <Image Include="Green.bmp" />
     <Image Include="help.ico" />
     <Image Include="small.ico" />
   </ItemGroup>

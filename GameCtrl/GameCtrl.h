@@ -13,6 +13,7 @@ struct GameCtrlData_st
 	long			ReinitChrono;			// Valeur de réinitialisation du compteur
 	long			NbDaysToReinit;			// Nb de jours avant réinitialisation
 	FILETIME		NextUpdateTime;			// Prochaine réinitialisation des compteurs
+	unsigned char	HourSlots[24];			// 24 tranches horaires par jour.
 	long			NbGames;				// Nombre de jeux installés
 	const char**	Games;					// Chemin vers les lanceurs de jeux.
 };
@@ -55,7 +56,7 @@ BOOL	Reset(void);
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);
 BOOL	CheckSecurity(const char* file);
-PACL	SetSecurity(PSECURITY_DESCRIPTOR psec);
+PACL	SetSecurity(PSECURITY_DESCRIPTOR psec, DWORD access_rights);
 PACL	UnsetSecurity(PSECURITY_DESCRIPTOR psec);
 BOOL	FindUser(const char* USerName);
 BOOL	CreateUser(const char* UserName, const char* PassWord);
