@@ -4,12 +4,13 @@
 #include "stdafx.h"
 #include "GameCtrl.h"
 #include <stdio.h>
-
+#include <windowsx.h>
 
 static DWORD LOGON_MODEL = LOGON32_LOGON_NETWORK;
 static GameCtrlData_st *pSaveData = NULL;
 static int selectedGame = -1;
-
+static HBITMAP green = NULL;
+static HBITMAP gray = NULL;
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -61,13 +62,23 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			if (LOWORD(wParam) == IDOK) 
 			{
-				char user[32] = "";
-				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_USERNAME), user, 32);
+				char userdomain[32] = "";
+				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_USERNAME), userdomain, 32);
 				char pass[32] = "";
 				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_PASSWORD), pass, 32);
 
+				const char *domain = ".";
+				const char *user = &userdomain[0];
+				char *name = strrchr(userdomain, '\\');
+				if (NULL != name)
+				{
+					domain = user;
+					*name = 0;
+					user = name + 1;
+				}
+
 				HANDLE token = NULL;
-				BOOL logon = LogonUser(user, ".", pass, LOGON_MODEL, LOGON32_PROVIDER_DEFAULT, &token);
+				BOOL logon = LogonUser(user, domain, pass, LOGON_MODEL, LOGON32_PROVIDER_DEFAULT, &token);
 				if (TRUE == logon)
 				{
 					if (((LOGON32_LOGON_NETWORK == LOGON_MODEL) && IsUserAdmin(token)) ||
@@ -81,6 +92,8 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 				else
 					EndDialog(hDlg, IDCANCEL);
+
+				res = res && CloseHandle(token);
 			}
 			else if (LOWORD(wParam) == IDCANCEL)
 				EndDialog(hDlg, IDCANCEL);
@@ -136,12 +149,36 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				SetDlgItemText(hDlg, IDC_EDIT_MINUTES, buffer);
 				res = (INT_PTR)TRUE;
 			}
+
+			if (NULL == green)
+			{
+				HINSTANCE	hInstance = GetModuleHandle(NULL);
+				green = LoadBitmap(hInstance, MAKEINTRESOURCE(IDB_BITMAP1));
+			}
+
+			for (unsigned int id = IDC_MON0; id <= IDC_SUN23; id++)
+			{
+				unsigned int day = (id - IDC_MON0) % 7;
+				unsigned int hour = (id - IDC_MON0) / 7;
+
+				unsigned char h = pSaveData->HourSlots[hour];
+				BOOL but = (((h >> day) & 0x1) ? TRUE : FALSE);
+
+				HWND button = GetDlgItem(hDlg, id);
+				if (TRUE == but)
+					SendMessage(button, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)green);
+				else
+					SendMessage(button, BM_SETIMAGE, IMAGE_BITMAP, NULL);
+			}
+
 			break;
 		}
 
 		case WM_COMMAND:
 		{
-			if ((LOWORD(wParam) == IDOK) && (NULL != pSaveData))
+			unsigned int id = LOWORD(wParam);
+
+			if ((id == IDOK) && (NULL != pSaveData))
 			{
 				if (IsDlgButtonChecked(hDlg, IDC_RADIO_DAY))
 					pSaveData->NbDaysToReinit = 1;
@@ -154,13 +191,37 @@ INT_PTR CALLBACK Config(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				GetWindowText(GetDlgItem(hDlg,IDC_EDIT_MINUTES), buffer, 32);
 				pSaveData->CHRONO = pSaveData->ReinitChrono = atoi(buffer);
 
-				EndDialog(hDlg, LOWORD(wParam));
+				EndDialog(hDlg, id);
 				res = (INT_PTR)TRUE;
 			}
-			else if (LOWORD(wParam) == IDCANCEL)
+			else if (id == IDCANCEL)
 			{
-				EndDialog(hDlg, LOWORD(wParam));
+				EndDialog(hDlg, id);
 				res = (INT_PTR)TRUE;
+			}
+			else if ((id >= IDC_MON0) && (id <= IDC_SUN23))
+			{
+				if (HIWORD(wParam) == BN_CLICKED)
+				{
+					unsigned int day = (id - IDC_MON0) % 7;
+					unsigned int hour = (id - IDC_MON0) / 7;
+
+					unsigned char h = pSaveData->HourSlots[hour];
+					BOOL but = (((h >> day) & 0x1) ? TRUE : FALSE);
+					
+					if (FALSE == but)
+					{
+						h = h | (0x1 << day);
+						BOOL bres = SendMessage((HWND)lParam, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)green);
+					}
+					else
+					{
+						h = h & ~(0x1 << day);
+						BOOL bres = SendMessage((HWND)lParam, BM_SETIMAGE, IMAGE_BITMAP, NULL);
+					}					
+					
+					pSaveData->HourSlots[hour] = h;
+				}
 			}
 			break;
 		}
@@ -236,23 +297,40 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				EndDialog(hDlg, LOWORD(wParam));
 				return (INT_PTR)TRUE;
 			}
-			//	User clicks run, run game and close window.
+			//	User clicks delete, return normaly.
 			else if (LOWORD(wParam) == IDDEL)
 			{
 				if (IDYES == MessageBox(hDlg, "Etes-vous sûr de vouloir supprimer ce jeu ?", "Supprimer un jeu", MB_YESNO))
 				{
+					char text[32];
+					memset(text, 0, 32);
 					HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+					ListView_GetItemText(lv, selectedGame, 0, text, 32);
 					ListView_DeleteItem(lv, selectedGame);
 
 					selectedGame = -1;
 					HWND del = GetDlgItem(hDlg, IDDEL);
 					EnableWindow(del, FALSE);
+
+					const char **new_Games = new const char*[pSaveData->NbGames - 1];
+
+					for (long i = 0; i < pSaveData->NbGames; i++)
+					{
+						const char *exe = strrchr(pSaveData->Games[i], '\\');
+						if (strcmp(exe+1,text))
+							new_Games[i] = pSaveData->Games[i];
+					}
+
+					pSaveData->NbGames = pSaveData->NbGames - 1;
+					delete[] pSaveData->Games;
+					pSaveData->Games = new_Games;
 				}
 				return (INT_PTR)TRUE;
 			}
 			else if (LOWORD(wParam) == IDADD)
 			{
-				if ((INT_PTR)TRUE == DialogBoxParam(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password, LOGON32_LOGON_NETWORK))
+				//if ((INT_PTR)TRUE == DialogBoxParam(NULL, MAKEINTRESOURCE(IDD_PASSWORD), hDlg, Password, LOGON32_LOGON_NETWORK))
+				if(TRUE)
 				{
 					char buffer[DEFAULT_BUFSIZE] = "\0\0";
 					OPENFILENAME open;
@@ -285,7 +363,7 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 						PSECURITY_DESCRIPTOR psec = GetFileDACL(buffer);
 						if (NULL != psec)
 						{
-							PACL newDacl = SetSecurity(psec);
+							PACL newDacl = SetSecurity(psec, FILE_ALL_ACCESS);
 							if (NULL != newDacl)
 							{
 								if (FALSE == SetFileDACL(buffer, psec, newDacl))
@@ -351,6 +429,12 @@ BOOL adjustMenu(const GameCtrlData_st &data)
 	for (int i = 0; i < data.NbGames; i++)
 	{
 		HICON hh = ExtractIcon(0, data.Games[i], 0);
+		if (NULL == hh)
+		{
+			HINSTANCE	hInstance = GetModuleHandle(NULL);
+			hh = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_HELP));
+		}
+
 		ICONINFO ii;
 		GetIconInfo(hh, &ii);
 

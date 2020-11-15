@@ -81,7 +81,7 @@ int _tmain(int argc, _TCHAR* argv[])
 						else
 						{
 							SYSTEMTIME SystemTime;
-							GetSystemTime(&SystemTime);
+							GetLocalTime(&SystemTime);
 							FILETIME FileTime;
 							SystemTimeToFileTime(&SystemTime, &FileTime);
 

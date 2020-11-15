@@ -453,6 +453,10 @@ BOOL CheckSecurity(const char* file)
 	BOOL DaclPresent = FALSE;
 	BOOL DaclDefaulted = FALSE;
 	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+
+	// TODO
+	if (NULL == dacl)
+		return TRUE;
 	
 	for (DWORD j = 0; (j < dacl->AceCount) && (TRUE == sec); j++)
 	{
@@ -569,22 +573,8 @@ BOOL SetFileDACL(const char* file, PSECURITY_DESCRIPTOR psec, PACL pNewAcl)
 }
 
 
-PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
+PACL SetSecurity(PSECURITY_DESCRIPTOR psec, DWORD access_rights)
 {
-	PACL dacl = NULL;
-	BOOL DaclPresent = FALSE;
-	BOOL DaclDefaulted = FALSE;
-	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
-	
-	ACL_SIZE_INFORMATION aclSizeInfo;
-	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
-	sec = GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation);
-	if (FALSE == sec)
-	{
-		CheckError("Impossible d'obtenir les informations sur ACL", ::GetLastError());
-		return NULL;
-	}
-
 	// Obtain the GameCtrlUser Sid
 	TCHAR sidbuffer[DEFAULT_BUFSIZE];
 	DWORD cbSid = DEFAULT_BUFSIZE;
@@ -597,10 +587,36 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 		return NULL;
 	}
 	PSID psid = (PSID)sidbuffer;
-		
-	// Compute the size of the new ACL.
-	DWORD dwNewAclSize = aclSizeInfo.AclBytesInUse +
-							sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+
+	//	Obtain security descriptor ACL if any
+	PACL dacl = NULL;
+	BOOL DaclPresent = FALSE;
+	BOOL DaclDefaulted = FALSE;
+	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+	
+	ACL_SIZE_INFORMATION aclSizeInfo;
+	memset(&aclSizeInfo, 0, sizeof(ACL_SIZE_INFORMATION));
+	DWORD dwNewAclSize = 0;
+
+	if (NULL != dacl)
+	{	
+		sec = GetAclInformation(dacl, (LPVOID)&aclSizeInfo, sizeof(ACL_SIZE_INFORMATION), AclSizeInformation);
+		if (FALSE == sec)
+		{
+			CheckError("Impossible d'obtenir les informations sur ACL", ::GetLastError());
+			return NULL;
+		}
+		dwNewAclSize = aclSizeInfo.AclBytesInUse + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+	}
+	else
+	{
+		// A null DACL means all accesses are allowed.
+		// Compute the size of the new ACL.
+		dwNewAclSize = sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+	}
+
+	// Aligne size to a DWORD boundary
+	dwNewAclSize = (dwNewAclSize + (sizeof(DWORD) - 1)) & 0xfffffffc;
 
 	// Allocate memory for the new ACL.
 	unsigned char *aclBuffer = new unsigned char[dwNewAclSize];
@@ -678,7 +694,7 @@ PACL SetSecurity(PSECURITY_DESCRIPTOR psec)
 
 	if (FALSE == bGameCtrlFound)
 	{
-		sec = AddAccessAllowedAce(pNewAcl, ACL_REVISION, FILE_ALL_ACCESS, psid);
+		sec = AddAccessAllowedAce(pNewAcl, ACL_REVISION, access_rights, psid);
 		if (FALSE == sec)
 			CheckError("Impossible d'ajouter le compte de jeu", ::GetLastError());
 	}

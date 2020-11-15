@@ -28,6 +28,7 @@ GameCtrlData_st data = {	CHRONO_DEFAULT,
 							CHRONO_DEFAULT,
 							DAYS_DEFAULT,
 							{ 0, 0 },
+							{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 							0,
 							NULL };
 GameCtrlOptions_st options = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
@@ -154,8 +155,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						Error(IDS_OUTOFTIME);
 						break;
 					}
-					//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
-					// try to do something ?
+					BOOL lastminute = FALSE;
+					if (FALSE == checkTimeSlot(data, lastminute))
+					{
+						Error(IDS_NOTIMESLOT);
+						break;
+					}
 					try
 					{
 						runGame(data.Games[wmId - IDM_GAME1]);
@@ -163,7 +168,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					}
 					catch (...)
 					{
-
+						//	KernelBase.dll throws at first call ... 0X06BA : RPC server not available
+						// try to do something: but what ?
 					}
 				}
 				default:
@@ -173,8 +179,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_TIMER:
 		{
+			BOOL lastminute = FALSE;
+			BOOL slot = checkTimeSlot(data, lastminute);
+
 			// blink color for the last minute of gaming.
-			if (1 == data.CHRONO)
+			if ((1 == data.CHRONO) || (TRUE == lastminute))
 			{
 				if (brush_red == current_brush)
 					current_brush = brush_white;
@@ -189,7 +198,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				data.CHRONO = data.CHRONO - 1;
 			}
 			//	Terminate current game if any when timer reaches 0
-			if (0 >= data.CHRONO)
+			if ((0 >= data.CHRONO) || (FALSE == slot))
 			{
 				detachGamePad();
 				stopGame();
