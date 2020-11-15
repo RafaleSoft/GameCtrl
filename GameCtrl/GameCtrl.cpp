@@ -58,11 +58,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				case ID_CONFIG_TIMELIMITER:
 				{
-// TODO: restore
-					//if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
+					if ((INT_PTR)TRUE == DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_PASSWORD), hWnd, Password, LOGON32_LOGON_NETWORK))
 						DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DIALOG_DELAYS), hWnd, Config, (LPARAM)&data);
-					//else
-					//	Error(IDS_INVALIDUSER);
+					else
+						Error(IDS_INVALIDUSER);
 					break;
 				}
 				case ID_CONFIG_GAMES:
@@ -156,6 +155,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						Error(IDS_OUTOFTIME);
 						break;
 					}
+					BOOL lastminute = FALSE;
+					if (FALSE == checkTimeSlot(data, lastminute))
+					{
+						Error(IDS_NOTIMESLOT);
+						break;
+					}
 					try
 					{
 						runGame(data.Games[wmId - IDM_GAME1]);
@@ -174,8 +179,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_TIMER:
 		{
+			BOOL lastminute = FALSE;
+			BOOL slot = checkTimeSlot(data, lastminute);
+
 			// blink color for the last minute of gaming.
-			if (1 == data.CHRONO)
+			if ((1 == data.CHRONO) || (TRUE == lastminute))
 			{
 				if (brush_red == current_brush)
 					current_brush = brush_white;
@@ -190,7 +198,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				data.CHRONO = data.CHRONO - 1;
 			}
 			//	Terminate current game if any when timer reaches 0
-			if (0 >= data.CHRONO)
+			if ((0 >= data.CHRONO) || (FALSE == slot))
 			{
 				detachGamePad();
 				stopGame();

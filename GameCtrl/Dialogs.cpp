@@ -62,13 +62,23 @@ INT_PTR CALLBACK Password(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			if (LOWORD(wParam) == IDOK) 
 			{
-				char user[32] = "";
-				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_USERNAME), user, 32);
+				char userdomain[32] = "";
+				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_USERNAME), userdomain, 32);
 				char pass[32] = "";
 				GetWindowText(GetDlgItem(hDlg, IDC_EDIT_PASSWORD), pass, 32);
 
+				const char *domain = ".";
+				const char *user = &userdomain[0];
+				char *name = strrchr(userdomain, '\\');
+				if (NULL != name)
+				{
+					domain = user;
+					*name = 0;
+					user = name + 1;
+				}
+
 				HANDLE token = NULL;
-				BOOL logon = LogonUser(user, ".", pass, LOGON_MODEL, LOGON32_PROVIDER_DEFAULT, &token);
+				BOOL logon = LogonUser(user, domain, pass, LOGON_MODEL, LOGON32_PROVIDER_DEFAULT, &token);
 				if (TRUE == logon)
 				{
 					if (((LOGON32_LOGON_NETWORK == LOGON_MODEL) && IsUserAdmin(token)) ||
@@ -287,17 +297,33 @@ INT_PTR CALLBACK Games(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				EndDialog(hDlg, LOWORD(wParam));
 				return (INT_PTR)TRUE;
 			}
-			//	User clicks run, run game and close window.
+			//	User clicks delete, return normaly.
 			else if (LOWORD(wParam) == IDDEL)
 			{
 				if (IDYES == MessageBox(hDlg, "Etes-vous sûr de vouloir supprimer ce jeu ?", "Supprimer un jeu", MB_YESNO))
 				{
+					char text[32];
+					memset(text, 0, 32);
 					HWND lv = GetDlgItem(hDlg, IDC_LIST_GAMES);
+					ListView_GetItemText(lv, selectedGame, 0, text, 32);
 					ListView_DeleteItem(lv, selectedGame);
 
 					selectedGame = -1;
 					HWND del = GetDlgItem(hDlg, IDDEL);
 					EnableWindow(del, FALSE);
+
+					const char **new_Games = new const char*[pSaveData->NbGames - 1];
+
+					for (long i = 0; i < pSaveData->NbGames; i++)
+					{
+						const char *exe = strrchr(pSaveData->Games[i], '\\');
+						if (strcmp(exe+1,text))
+							new_Games[i] = pSaveData->Games[i];
+					}
+
+					pSaveData->NbGames = pSaveData->NbGames - 1;
+					delete[] pSaveData->Games;
+					pSaveData->Games = new_Games;
 				}
 				return (INT_PTR)TRUE;
 			}
@@ -403,6 +429,12 @@ BOOL adjustMenu(const GameCtrlData_st &data)
 	for (int i = 0; i < data.NbGames; i++)
 	{
 		HICON hh = ExtractIcon(0, data.Games[i], 0);
+		if (NULL == hh)
+		{
+			HINSTANCE	hInstance = GetModuleHandle(NULL);
+			hh = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_HELP));
+		}
+
 		ICONINFO ii;
 		GetIconInfo(hh, &ii);
 

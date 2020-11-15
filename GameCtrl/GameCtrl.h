@@ -52,6 +52,7 @@ BOOL	ParseCmdLine(LPSTR lpCmdLine, GameCtrlOptions_st &options);
 BOOL	Install(BOOL force, GameCtrlData_st &data);
 BOOL	UnInstall(BOOL force);
 BOOL	Reset(void);
+BOOL	checkTimeSlot(GameCtrlData_st &data, BOOL& lastminute);
 
 //	ACL management
 BOOL	IsUserAdmin(HANDLE token);

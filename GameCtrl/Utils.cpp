@@ -582,16 +582,28 @@ BOOL stopGame(void)
 	return res;
 }
 
-BOOL checkTimeSlot(GameCtrlData_st &data)
+BOOL checkTimeSlot(GameCtrlData_st &data, BOOL& lastminute)
 {
 	BOOL res = FALSE;
+
+	SYSTEMTIME SystemTime;
+	GetLocalTime(&SystemTime);
+
+	// make Monday = day 0
+	unsigned int day = (SystemTime.wDayOfWeek + 6) % 7;
+	unsigned int hour = SystemTime.wHour;
+	lastminute = (SystemTime.wMinute == 59 ? TRUE: FALSE);
+
+	unsigned char h = data.HourSlots[hour];
+	res = (((h >> day) & 0x1) ? TRUE : FALSE);
+
 	return res;
 }
 
 BOOL adjustGameTime(GameCtrlData_st &data)
 {
 	SYSTEMTIME SystemTime;
-	GetSystemTime(&SystemTime);
+	GetLocalTime(&SystemTime);
 	FILETIME currentTime = { 0, 0 };
 	if (FALSE == SystemTimeToFileTime(&SystemTime, &currentTime))
 	{
@@ -666,7 +678,7 @@ BOOL CheckInstall(GameCtrlData_st &data)
 
 #ifdef SHAREWARE
 	SYSTEMTIME SystemTime;
-	GetSystemTime(&SystemTime);
+	GetLocalTime(&SystemTime);
 	FILETIME currentTime = { 0, 0 };
 	if (FALSE == SystemTimeToFileTime(&SystemTime, &currentTime))
 	{

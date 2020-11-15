@@ -453,6 +453,10 @@ BOOL CheckSecurity(const char* file)
 	BOOL DaclPresent = FALSE;
 	BOOL DaclDefaulted = FALSE;
 	BOOL sec = GetSecurityDescriptorDacl(psec, &DaclPresent, &dacl, &DaclDefaulted);
+
+	// TODO
+	if (NULL == dacl)
+		return TRUE;
 	
 	for (DWORD j = 0; (j < dacl->AceCount) && (TRUE == sec); j++)
 	{
